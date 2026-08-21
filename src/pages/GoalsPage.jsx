@@ -11,6 +11,17 @@ export default function GoalsPage() {
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [depositAmounts, setDepositAmounts] = useState({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const handleDelete = (id) => {
+    if (confirmDeleteId === id) {
+      deleteGoal(id);
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+    }
+  };
 
   const handleAdd = (e) => {
     e.preventDefault();
@@ -86,9 +97,10 @@ export default function GoalsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-black ${isDone ? 'text-yellow-400' : 'text-violet-400'}`}>{Math.round(pct)}%</span>
-                    <motion.button whileTap={{ scale: 0.8 }} onClick={() => deleteGoal(goal.id)} className="p-1 text-gray-600 hover:text-red-400 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </motion.button>
+                    <motion.button whileTap={{ scale: 0.8 }} onClick={() => handleDelete(goal.id)}
+                    className={`p-1.5 transition-all ${confirmDeleteId === goal.id ? 'text-red-400 bg-red-500/20 rounded-lg' : 'text-gray-500 hover:text-red-400'}`}>
+                    {confirmDeleteId === goal.id ? <span className="text-[10px] font-bold">ยืนยัน</span> : <Trash2 className="w-4 h-4" />}
+                  </motion.button>
                   </div>
                 </div>
 

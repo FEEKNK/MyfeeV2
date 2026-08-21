@@ -11,10 +11,10 @@ const MODES = [
 
 export default function PomodoroPage() {
   const navigate = useNavigate();
+  const { pomodoroStats, addPomodoroSession } = useStore();
   const [mode, setMode] = useState(MODES[0]);
   const [timeLeft, setTimeLeft] = useState(MODES[0].seconds);
   const [running, setRunning] = useState(false);
-  const [sessions, setSessions] = useState(0);
   const [endTime, setEndTime] = useState(null);
   const intervalRef = useRef(null);
 
@@ -28,7 +28,7 @@ export default function PomodoroPage() {
         if (remaining <= 0) {
           clearInterval(intervalRef.current);
           setRunning(false);
-          if (mode.key === 'work') setSessions(s => s + 1);
+          if (mode.key === 'work') addPomodoroSession();
           if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
         }
       }, 500);
@@ -74,10 +74,10 @@ export default function PomodoroPage() {
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="text-center">
-          <h1 className="font-black text-white text-lg">Pomodoro</h1>
+          <h1 className="font-black text-white dark-invert text-lg">Pomodoro</h1>
           <p className="text-xs text-gray-400 flex items-center justify-center gap-1">
             <Timer className="w-3.5 h-3.5 text-red-400" />
-            รอบสำเร็จ: {sessions} รอบ
+            วันนี้ทำสำเร็จ: {pomodoroStats.todaySessions || 0} รอบ
           </p>
         </div>
         <div className="w-10" />

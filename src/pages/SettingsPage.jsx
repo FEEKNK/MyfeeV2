@@ -7,23 +7,17 @@ import {
   Volume2,
   VolumeX,
   Flame,
-  Cloud,
-  RefreshCw,
-  User,
-  LogIn,
-  CheckCircle2,
+  Lock,
+  KeyRound,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
-import { isSupabaseConfigured } from '../lib/supabase';
-import AuthModal from '../components/AuthModal';
+import ChangePinModal from '../components/ChangePinModal';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { settings, updateSettings, streak, user, isSyncing, lastSyncedAt, syncCloudData } = useStore();
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
-  const isConfigured = isSupabaseConfigured();
+  const { settings, updateSettings, streak } = useStore();
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -37,58 +31,6 @@ export default function SettingsPage() {
         </motion.button>
         <h1 className="font-black text-white dark-invert text-lg">ตั้งค่า & สถิติ</h1>
         <div className="w-10" />
-      </div>
-
-      {/* Cloud Sync & Account Banner */}
-      <div className="glass-dark rounded-2xl p-5 border border-blue-500/30 relative overflow-hidden space-y-3">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/15 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-        
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <Cloud className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-white dark-invert font-bold text-sm">Supabase Cloud Sync</h3>
-              <p className="text-[11px] text-gray-400">
-                {user ? `เข้าสู่ระบบ: ${user.email}` : isConfigured ? 'เชื่อมต่อแล้ว (ยังไม่เข้าสู่ระบบ)' : 'ยังไม่ได้เชื่อมต่อ API Key'}
-              </p>
-            </div>
-          </div>
-
-          <motion.button
-            whileTap={{ scale: 0.92 }}
-            onClick={() => setShowAuthModal(true)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
-              user
-                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md'
-            }`}
-          >
-            {user ? <User className="w-3.5 h-3.5" /> : <LogIn className="w-3.5 h-3.5" />}
-            {user ? 'จัดการบัญชี' : 'เข้าสู่ระบบ'}
-          </motion.button>
-        </div>
-
-        {user && (
-          <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-            <div className="text-[10px] text-gray-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              {lastSyncedAt
-                ? `ซิงค์ล่าสุด: ${new Date(lastSyncedAt).toLocaleTimeString('th-TH')}`
-                : 'พร้อมซิงค์ข้อมูล'}
-            </div>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={syncCloudData}
-              disabled={isSyncing}
-              className="text-[11px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10"
-            >
-              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ทันที'}
-            </motion.button>
-          </div>
-        )}
       </div>
 
       {/* Streak Banner */}
@@ -177,10 +119,55 @@ export default function SettingsPage() {
             />
           </div>
         </div>
+
+        {/* Security & PIN Lock */}
+        <div className="glass-dark rounded-2xl border border-white/10 p-5 space-y-5">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">ความปลอดภัย & PIN</h3>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-white dark-invert text-sm">ล็อกแอปด้วย PIN (4 หลัก)</p>
+                <p className="text-xs text-gray-500">ต้องใส่รหัส PIN ก่อนเข้าใช้งาน</p>
+              </div>
+            </div>
+            <button
+              onClick={() => updateSettings({ isPinEnabled: !(settings.isPinEnabled !== false) })}
+              className={`w-12 h-6 rounded-full p-1 transition-colors ${settings.isPinEnabled !== false ? 'bg-blue-500' : 'bg-gray-600'}`}
+            >
+              <motion.div
+                animate={{ x: settings.isPinEnabled !== false ? 24 : 0 }}
+                className="w-4 h-4 bg-white rounded-full shadow-sm"
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-white dark-invert text-sm">เปลี่ยนรหัส PIN</p>
+                <p className="text-xs text-gray-500">ตั้งรหัสผ่าน 4 หลักใหม่</p>
+              </div>
+            </div>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowChangePinModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-xs font-bold transition-colors"
+            >
+              เปลี่ยนรหัส
+            </motion.button>
+          </div>
+        </div>
       </div>
 
-      {/* Auth Modal */}
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      {/* Change PIN Modal */}
+      <ChangePinModal isOpen={showChangePinModal} onClose={() => setShowChangePinModal(false)} />
     </div>
   );
 }

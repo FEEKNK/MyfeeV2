@@ -1,7 +1,9 @@
-import React, { Suspense, useEffect, Component } from 'react';
+import React, { useState, Suspense, useEffect, Component } from 'react';
 import { BrowserRouter } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import Spline from '@splinetool/react-spline';
 import AppRouter from './router/AppRouter';
+import PinLockScreen from './components/PinLockScreen';
 import useStore from './store/useStore';
 
 class SplineErrorBoundary extends Component {
@@ -23,6 +25,9 @@ class SplineErrorBoundary extends Component {
 
 export default function App() {
   const { settings, checkStreak, initAuth } = useStore();
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  const isPinActive = settings?.isPinEnabled !== false;
 
   useEffect(() => {
     checkStreak();
@@ -35,13 +40,20 @@ export default function App() {
         <div className="bg-noise" />
 
         {/* 3D Background */}
-        <div className="absolute inset-0 z-0 opacity-60 pointer-events-none">
+        <div className={`absolute inset-0 z-0 pointer-events-none transition-opacity duration-500 ${settings.darkMode ? 'opacity-60' : 'opacity-15'}`}>
           <SplineErrorBoundary>
             <Suspense fallback={null}>
               <Spline scene="https://prod.spline.design/6Wq1Q7YGyM-iab9i/scene.splinecode" />
             </Suspense>
           </SplineErrorBoundary>
         </div>
+
+        {/* PIN Lock Screen Overlay */}
+        <AnimatePresence>
+          {isPinActive && !isUnlocked && (
+            <PinLockScreen onUnlock={() => setIsUnlocked(true)} />
+          )}
+        </AnimatePresence>
 
         {/* App Content with Router */}
         <AppRouter />

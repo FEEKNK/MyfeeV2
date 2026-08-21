@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, Reorder, useDragControls } from 'framer-motion';
+import { motion } from 'framer-motion';
 import useStore from '../store/useStore';
 import {
   BookOpen,
@@ -17,7 +17,7 @@ import {
   HelpCircle,
   Code,
   Settings,
-  GripVertical
+  LayoutGrid
 } from 'lucide-react';
 
 const StatCard = ({ label, value, icon: Icon, color, to }) => {
@@ -39,68 +39,45 @@ const StatCard = ({ label, value, icon: Icon, color, to }) => {
   );
 };
 
-const FeatureCardItem = ({ id, title, desc, icon: Icon, color, to, badge }) => {
+const GridFeatureCard = ({ title, desc, icon: Icon, color, to, badge }) => {
   const navigate = useNavigate();
-  const dragControls = useDragControls();
 
   return (
-    <Reorder.Item
-      value={id}
-      id={id}
-      dragListener={false} // Users must grab the handle to drag
-      dragControls={dragControls}
-      className="w-full glass-dark rounded-[1.5rem] p-5 border border-white/10 text-left relative overflow-hidden group mb-3 cursor-default shadow-sm"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9 }}
+    <motion.button
+      whileHover={{ y: -3, scale: 1.02 }}
+      whileTap={{ scale: 0.93 }}
+      onClick={() => navigate(to)}
+      className="flex flex-col items-center justify-between p-3 glass-dark rounded-2xl border border-white/10 text-center relative overflow-hidden group shadow-sm min-h-[108px] transition-all hover:border-white/20"
     >
-      <div className={`absolute -bottom-6 -right-6 w-24 h-24 rounded-full blur-2xl opacity-20 ${color}`} />
-      <div className="flex items-center justify-between relative z-10">
-        
-        {/* Left Side: Drag Handle & Info */}
-        <div className="flex items-center gap-3 w-full">
-          {/* Drag Handle */}
-          <div 
-            className="p-1 -ml-2 rounded-lg hover:bg-white/10 cursor-grab active:cursor-grabbing text-gray-500 hover:text-white transition-colors"
-            onPointerDown={(e) => {
-              e.preventDefault(); // Prevent touch scrolling while dragging
-              dragControls.start(e);
-            }}
-            style={{ touchAction: 'none' }} // Crucial for mobile dragging
-          >
-            <GripVertical className="w-5 h-5" />
-          </div>
+      {/* Background glow */}
+      <div className={`absolute -bottom-5 -right-5 w-14 h-14 rounded-full blur-xl opacity-20 ${color}`} />
 
-          <div 
-            className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${color} bg-opacity-20 border border-white/10 text-white cursor-pointer`}
-            onClick={() => navigate(to)}
-          >
-            <Icon className="w-5 h-5" />
-          </div>
-          
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(to)}>
-            <div className="font-bold text-white text-base truncate">{title}</div>
-            <div className="text-xs text-gray-400 mt-0.5 truncate">{desc}</div>
-          </div>
-        </div>
+      {/* Badge in top right */}
+      {badge !== undefined && (
+        <span className="absolute top-1.5 right-1.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-white/10 text-white border border-white/10 leading-none">
+          {badge}
+        </span>
+      )}
 
-        {/* Right Side: Badge & Arrow */}
-        <div className="flex items-center gap-2 pl-2 shrink-0 cursor-pointer" onClick={() => navigate(to)}>
-          {badge !== undefined && (
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${color} bg-opacity-20 text-white border border-white/10`}>
-              {badge}
-            </span>
-          )}
-          <ChevronRight className="w-5 h-5 text-white/30 group-hover:text-white/60 transition-colors" />
-        </div>
+      {/* Icon container */}
+      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${color} bg-opacity-20 text-white border border-white/10 group-hover:scale-110 transition-transform duration-200 mt-1 shadow-sm`}>
+        <Icon className="w-5 h-5" />
       </div>
-    </Reorder.Item>
+
+      {/* Title & Desc */}
+      <div className="w-full mt-1.5">
+        <div className="font-bold text-white text-xs leading-tight truncate">{title}</div>
+        {desc && (
+          <div className="text-[10px] text-gray-400 mt-0.5 truncate leading-tight">{desc}</div>
+        )}
+      </div>
+    </motion.button>
   );
 };
 
 export default function HomePage() {
   const storeData = useStore();
-  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns, homeFeatureOrder, setHomeFeatureOrder } = storeData;
+  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns } = storeData;
   const todayStr = new Date().toISOString().split('T')[0];
 
   const activeTodos = todos.filter(t => !t.completed).length;
@@ -110,34 +87,24 @@ export default function HomePage() {
     .reduce((s, t) => s + t.amount, 0);
   const learnedPct = vocabulary.length > 0 ? Math.round((learnedCards.length / vocabulary.length) * 100) : 0;
 
-  const FEATURES_CONFIG = {
-    flashcard: { title: "Flashcards", getDesc: () => `${learnedCards.length} / ${vocabulary.length} คำ`, icon: BookOpen, color: "bg-blue-500", to: "/flashcard", getBadge: () => learnedCards.length },
-    todo: { title: "To-Do List", getDesc: () => `${activeTodos} รายการที่ยังค้าง`, icon: CheckSquare, color: "bg-emerald-500", to: "/todo", getBadge: () => activeTodos },
-    habit: { title: "Habit Tracker", getDesc: () => `${habits.length} นิสัย`, icon: Flame, color: "bg-orange-500", to: "/habit", getBadge: () => habitsToday },
-    finance: { title: "Finance", desc: "รายรับ-รายจ่าย", icon: Wallet, color: "bg-pink-500", to: "/finance", getBadge: () => finance.length },
-    goals: { title: "Savings Goals", getDesc: () => `${goals.length} เป้าหมาย`, icon: Target, color: "bg-violet-500", to: "/goals", getBadge: () => goals.length },
-    notes: { title: "โน้ต & ไดอารี่", getDesc: () => `${notes.length} รายการ`, icon: FileText, color: "bg-amber-500", to: "/notes", getBadge: () => notes.length },
-    projects: { title: "Projects", getDesc: () => `${projects.length} โปรเจกต์`, icon: Rocket, color: "bg-indigo-500", to: "/projects", getBadge: () => projects.length },
-    pomodoro: { title: "Pomodoro", desc: "จับเวลาโฟกัส 25 นาที", icon: Timer, color: "bg-red-500", to: "/pomodoro" },
-    countdown: { title: "Countdown", getDesc: () => `${countdowns.length} กำหนดการ`, icon: Hourglass, color: "bg-purple-500", to: "/countdown", getBadge: () => countdowns.length },
-    breathing: { title: "ฝึกหายใจ Wim Hof", desc: "3 รอบ · 30 ครั้ง", icon: Wind, color: "bg-teal-500", to: "/breathing" },
-    quiz: { title: "ทดสอบคำศัพท์ (Quiz)", desc: "ทดสอบความจำ 3 รูปแบบ", icon: HelpCircle, color: "bg-fuchsia-500", to: "/quiz" },
-    code_reading: { title: "ฝึกอ่านโค้ด (Code Reading)", desc: "HTML, CSS, JS, SQL", icon: Code, color: "bg-cyan-500", to: "/code-reading" },
-    settings: { title: "ตั้งค่า & สถิติ", desc: "ธีมแอป, งบประมาณ, Streak", icon: Settings, color: "bg-gray-500", to: "/settings" }
-  };
-
-  // Fallback missing features
-  const safeFeatureOrder = homeFeatureOrder || [];
-  const missingFeatures = Object.keys(FEATURES_CONFIG).filter(id => !safeFeatureOrder.includes(id));
-  const finalFeatureOrder = [...safeFeatureOrder, ...missingFeatures];
-
-  // Update store only if missing features were added
-  const handleReorder = (newOrder) => {
-    setHomeFeatureOrder(newOrder);
-  };
+  const FEATURES = [
+    { id: 'flashcard', title: "Flashcards", getDesc: () => `${learnedCards.length}/${vocabulary.length} คำ`, icon: BookOpen, color: "bg-blue-500", to: "/flashcard", getBadge: () => learnedCards.length },
+    { id: 'todo', title: "To-Do List", getDesc: () => `${activeTodos} งานค้าง`, icon: CheckSquare, color: "bg-emerald-500", to: "/todo", getBadge: () => activeTodos },
+    { id: 'habit', title: "Habit Tracker", getDesc: () => `${habitsToday}/${habits.length} วันนี้`, icon: Flame, color: "bg-orange-500", to: "/habit", getBadge: () => habitsToday },
+    { id: 'finance', title: "การเงิน", desc: "รายรับ-รายจ่าย", icon: Wallet, color: "bg-pink-500", to: "/finance", getBadge: () => finance.length },
+    { id: 'goals', title: "เป้าหมายออม", getDesc: () => `${goals.length} เป้าหมาย`, icon: Target, color: "bg-violet-500", to: "/goals", getBadge: () => goals.length },
+    { id: 'notes', title: "โน้ต & ไดอารี่", getDesc: () => `${notes.length} รายการ`, icon: FileText, color: "bg-amber-500", to: "/notes", getBadge: () => notes.length },
+    { id: 'projects', title: "Projects", getDesc: () => `${projects.length} โปรเจกต์`, icon: Rocket, color: "bg-indigo-500", to: "/projects", getBadge: () => projects.length },
+    { id: 'pomodoro', title: "Pomodoro", desc: "จับเวลาโฟกัส", icon: Timer, color: "bg-red-500", to: "/pomodoro" },
+    { id: 'countdown', title: "Countdown", getDesc: () => `${countdowns.length} กำหนดการ`, icon: Hourglass, color: "bg-purple-500", to: "/countdown", getBadge: () => countdowns.length },
+    { id: 'breathing', title: "ฝึกหายใจ", desc: "Wim Hof 3 รอบ", icon: Wind, color: "bg-teal-500", to: "/breathing" },
+    { id: 'quiz', title: "ทดสอบศัพท์", desc: "Quiz 3 รูปแบบ", icon: HelpCircle, color: "bg-fuchsia-500", to: "/quiz" },
+    { id: 'code_reading', title: "ฝึกอ่านโค้ด", desc: "HTML, JS, SQL", icon: Code, color: "bg-cyan-500", to: "/code-reading" },
+    { id: 'settings', title: "ตั้งค่า & สถิติ", desc: "ธีม, PIN, งบ", icon: Settings, color: "bg-gray-500", to: "/settings" }
+  ];
 
   return (
-    <div className="flex flex-col gap-5 pb-4">
+    <div className="flex flex-col gap-5 pb-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -162,40 +129,31 @@ export default function HomePage() {
         <StatCard label="ค่าใช้จ่ายเดือนนี้" value={`฿${totalExpense.toLocaleString()}`} icon={Wallet} color="bg-pink-500" to="/finance" />
       </div>
 
-      {/* Feature List (Draggable) */}
+      {/* 3-Column Grid Feature Menu */}
       <div className="mt-1">
-        <div className="flex items-center justify-between mb-4 px-1">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            เมนูหลัก
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+            <LayoutGrid className="w-4 h-4 text-blue-400" />
+            <span>เมนูหลัก</span>
           </h2>
-          <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-full border border-white/10 flex items-center gap-1">
-            <GripVertical className="w-3 h-3" /> ลากเพื่อจัดเรียง
+          <span className="text-[10px] text-gray-400 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">
+            13 ฟังก์ชัน
           </span>
         </div>
-        
-        <Reorder.Group 
-          axis="y" 
-          values={finalFeatureOrder} 
-          onReorder={handleReorder} 
-          className="flex flex-col list-none p-0 m-0"
-        >
-          {finalFeatureOrder.map((id) => {
-            const config = FEATURES_CONFIG[id];
-            if (!config) return null;
-            return (
-              <FeatureCardItem
-                key={id}
-                id={id}
-                title={config.title}
-                desc={config.getDesc ? config.getDesc() : config.desc}
-                icon={config.icon}
-                color={config.color}
-                to={config.to}
-                badge={config.getBadge ? config.getBadge() : undefined}
-              />
-            );
-          })}
-        </Reorder.Group>
+
+        <div className="grid grid-cols-3 gap-2.5">
+          {FEATURES.map((item) => (
+            <GridFeatureCard
+              key={item.id}
+              title={item.title}
+              desc={item.getDesc ? item.getDesc() : item.desc}
+              icon={item.icon}
+              color={item.color}
+              to={item.to}
+              badge={item.getBadge ? item.getBadge() : undefined}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

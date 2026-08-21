@@ -33,6 +33,17 @@ export default function ProjectsPage() {
   const [expanded, setExpanded] = useState({});
   const [subInputs, setSubInputs] = useState({});
   const [filter, setFilter] = useState('all');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const handleDelete = (id) => {
+    if (confirmDeleteId === id) {
+      deleteProject(id);
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+    }
+  };
 
   const filteredProjects = (projects || []).filter(p => filter === 'all' || p.status === filter);
 
@@ -147,9 +158,9 @@ export default function ProjectsPage() {
                       className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-gray-400">
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </motion.button>
-                    <motion.button whileTap={{ scale: 0.8 }} onClick={() => deleteProject(proj.id)}
-                      className="p-1.5 text-gray-600 hover:text-red-400 transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <motion.button whileTap={{ scale: 0.8 }} onClick={() => handleDelete(proj.id)}
+                      className={`p-1.5 transition-all ${confirmDeleteId === proj.id ? 'text-red-400 bg-red-500/20 rounded-lg' : 'text-gray-500 hover:text-red-400'}`}>
+                      {confirmDeleteId === proj.id ? <span className="text-[10px] font-bold">ยืนยัน</span> : <Trash2 className="w-4 h-4" />}
                     </motion.button>
                   </div>
                 </div>

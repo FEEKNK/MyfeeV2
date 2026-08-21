@@ -1,7 +1,6 @@
 import React from 'react';
-import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, LayoutList, Flame, Wallet, MoreHorizontal } from 'lucide-react';
 
 import HomePage from '../pages/HomePage';
 import FlashcardPage from '../pages/FlashcardPage';
@@ -25,30 +24,13 @@ const pageVariants = {
   out: { opacity: 0, x: -24 },
 };
 
-const NAV_ITEMS = [
-  { icon: Home, to: '/', label: 'หน้าหลัก' },
-  { icon: LayoutList, to: '/todo', label: 'งาน' },
-  { icon: Flame, to: '/habit', label: 'นิสัย' },
-  { icon: Wallet, to: '/finance', label: 'การเงิน' },
-  { icon: MoreHorizontal, to: '/more', label: 'เพิ่มเติม' },
-];
-
-const MORE_PAGES = ['/more', '/goals', '/notes', '/pomodoro', '/projects', '/countdown', '/breathing', '/flashcard', '/quiz', '/code-reading', '/settings'];
-
 export default function AppRouter() {
   const location = useLocation();
-  const navigate = useNavigate();
-
-  const activeNav = NAV_ITEMS.find(n => {
-    if (n.to === '/') return location.pathname === '/';
-    if (n.to === '/more') return MORE_PAGES.some(p => location.pathname.startsWith(p));
-    return location.pathname.startsWith(n.to);
-  });
 
   return (
     <div className="relative z-10 w-full max-w-md h-full flex flex-col">
       {/* Page Content */}
-      <div className="flex-1 overflow-y-auto pb-28 px-5 pt-10">
+      <div className="flex-1 overflow-y-auto pb-6 px-5 pt-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
@@ -79,27 +61,6 @@ export default function AppRouter() {
             </Routes>
           </motion.div>
         </AnimatePresence>
-      </div>
-
-      {/* Glass Bottom Nav */}
-      <div className="absolute bottom-6 left-5 right-5 h-16 glass rounded-full flex justify-around items-center px-4 border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
-        {NAV_ITEMS.map(({ icon: Icon, to, label }) => {
-          const isActive = activeNav?.to === to;
-          return (
-            <motion.button
-              key={to}
-              whileTap={{ scale: 0.75 }}
-              onClick={() => navigate(to)}
-              title={label}
-              className="flex flex-col items-center gap-1 relative"
-            >
-              <Icon className={`w-5 h-5 transition-colors duration-200 ${isActive ? 'text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]' : 'text-gray-500'}`} />
-              {isActive && (
-                <motion.div layoutId="nav-dot" className="w-1 h-1 bg-blue-400 rounded-full" />
-              )}
-            </motion.button>
-          );
-        })}
       </div>
     </div>
   );

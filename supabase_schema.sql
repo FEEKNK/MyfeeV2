@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.user_sync_data (
     notes JSONB DEFAULT '[]'::jsonb,
     projects JSONB DEFAULT '[]'::jsonb,
     countdowns JSONB DEFAULT '[]'::jsonb,
-    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0}'::jsonb,
+    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": "3804", "isPinEnabled": true}'::jsonb,
     streak_data JSONB DEFAULT '{"count": 0, "lastDate": null, "cardsFlippedToday": 0}'::jsonb,
     code_reading_progress JSONB DEFAULT '{"mode": "code", "levelIndex": 0, "questionIndex": 0}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,

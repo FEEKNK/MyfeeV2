@@ -7,6 +7,51 @@ import { fetchCloudUserData, saveCloudUserData } from '../services/supabaseSync'
 const DEFAULT_EXPENSE_CATEGORIES = ['อาหาร', 'เดินทาง', 'ช้อปปิ้ง', 'ความบันเทิง', 'สุขภาพ', 'บิล', 'อื่นๆ'];
 const DEFAULT_INCOME_CATEGORIES = ['เงินเดือน/รายได้', 'ฟรีแลนซ์', 'ลงทุน', 'อื่นๆ'];
 
+// ── PIN Hashing ──────────────────────────────────────────────
+const hashPin = async (pin) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pin + 'myfee_salt_v2');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+const hashPinSync = (pin) => {
+  // Simple sync hash for initial comparison — fallback for non-hashed PINs
+  let hash = 0;
+  const salted = pin + 'myfee_salt_v2';
+  for (let i = 0; i < salted.length; i++) {
+    const char = salted.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return 'v2hash_' + Math.abs(hash).toString(36);
+};
+
+// ── Habit Streak Calculator ──────────────────────────────────
+const calculateStreak = (history) => {
+  if (!history || history.length === 0) return 0;
+  const sorted = [...history].sort((a, b) => new Date(b) - new Date(a));
+  const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  
+  // Must have done it today or yesterday for streak to count
+  if (sorted[0] !== today && sorted[0] !== yesterday) return 0;
+  
+  let streak = 1;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curr = new Date(sorted[i]);
+    const prev = new Date(sorted[i + 1]);
+    const diffDays = Math.round((curr - prev) / 86400000);
+    if (diffDays === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+};
+
 const loadFromStorage = (key, defaultValue) => {
   try {
     const item = localStorage.getItem(key);
@@ -203,6 +248,16 @@ const useStore = create((set, get) => ({
     debounceSyncToCloud(get);
   },
 
+  editTodo: (id, newText) => {
+    set((state) => {
+      if (!newText.trim()) return {};
+      const next = state.todos.map(t => t.id === id ? { ...t, text: newText.trim() } : t);
+      saveToStorage('todoData', next);
+      return { todos: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
   toggleTodo: (id) => {
     set((state) => {
       const todayStr = new Date().toISOString().split('T')[0];
@@ -258,7 +313,7 @@ const useStore = create((set, get) => ({
         return {
           ...h,
           history: newHistory,
-          streak: isDone ? Math.max(0, h.streak - 1) : h.streak + 1,
+          streak: calculateStreak(newHistory),
           lastCompleted: isDone ? null : todayStr
         };
       });
@@ -339,6 +394,24 @@ const useStore = create((set, get) => ({
     debounceSyncToCloud(get);
   },
 
+  editTransaction: (id, updates) => {
+    set((state) => {
+      const next = state.finance.map(t => {
+        if (t.id !== id) return t;
+        return {
+          ...t,
+          ...(updates.amount !== undefined ? { amount: parseFloat(updates.amount) || t.amount } : {}),
+          ...(updates.category !== undefined ? { category: updates.category } : {}),
+          ...(updates.note !== undefined ? { note: updates.note } : {}),
+          ...(updates.type !== undefined ? { type: updates.type } : {}),
+        };
+      });
+      saveToStorage('financeData', next);
+      return { finance: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
   deleteTransaction: (id) => {
     set((state) => {
       const next = state.finance.filter(t => t.id !== id);
@@ -346,6 +419,79 @@ const useStore = create((set, get) => ({
       return { finance: next };
     });
     debounceSyncToCloud(get);
+  },
+
+  // ── Recurring Transactions ─────────────────────────────────
+  recurringTransactions: loadFromStorage('recurringTransactions', []),
+
+  addRecurringTransaction: (type, category, amount, note, dayOfMonth) => {
+    set((state) => {
+      const num = parseFloat(amount);
+      if (isNaN(num) || num <= 0) return {};
+      const item = {
+        id: Date.now(),
+        type, category: category || 'ทั่วไป',
+        amount: num, note: note || '',
+        dayOfMonth: dayOfMonth || 1,
+        isActive: true,
+        lastProcessed: null,
+      };
+      const next = [item, ...state.recurringTransactions];
+      saveToStorage('recurringTransactions', next);
+      return { recurringTransactions: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  deleteRecurringTransaction: (id) => {
+    set((state) => {
+      const next = state.recurringTransactions.filter(r => r.id !== id);
+      saveToStorage('recurringTransactions', next);
+      return { recurringTransactions: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  toggleRecurringTransaction: (id) => {
+    set((state) => {
+      const next = state.recurringTransactions.map(r =>
+        r.id === id ? { ...r, isActive: !r.isActive } : r
+      );
+      saveToStorage('recurringTransactions', next);
+      return { recurringTransactions: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  processRecurringTransactions: () => {
+    const state = get();
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    let changed = false;
+
+    state.recurringTransactions.forEach(r => {
+      if (!r.isActive) return;
+      if (r.lastProcessed === currentMonth) return;
+      if (now.getDate() >= r.dayOfMonth) {
+        // Add the transaction
+        state.addTransaction(r.type, r.category, r.amount, `🔄 ${r.note || r.category} (รายการประจำ)`, null);
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      set((state) => {
+        const next = state.recurringTransactions.map(r => {
+          if (!r.isActive || r.lastProcessed === currentMonth) return r;
+          if (now.getDate() >= r.dayOfMonth) {
+            return { ...r, lastProcessed: currentMonth };
+          }
+          return r;
+        });
+        saveToStorage('recurringTransactions', next);
+        return { recurringTransactions: next };
+      });
+    }
   },
 
   // ── Goals ─────────────────────────────────────────────────────
@@ -387,10 +533,20 @@ const useStore = create((set, get) => ({
   // ── Notes ─────────────────────────────────────────────────────
   notes: loadFromStorage('notesData', initialUserData.notesData),
 
-  addNote: (content, mood, isPinned) => {
+  addNote: (content, mood = 'neutral') => {
     set((state) => {
-      const note = { id: Date.now(), content: content.trim(), mood: mood || 'neutral', date: new Date().toISOString(), isPinned: !!isPinned };
-      const next = [note, ...state.notes];
+      const next = [{ id: Date.now(), content, mood, date: new Date().toISOString(), isPinned: false }, ...state.notes];
+      saveToStorage('notesData', next);
+      return { notes: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  editNote: (id, newContent, newMood) => {
+    set((state) => {
+      const next = state.notes.map(n => 
+        n.id === id ? { ...n, content: newContent !== undefined ? newContent : n.content, mood: newMood !== undefined ? newMood : n.mood } : n
+      );
       saveToStorage('notesData', next);
       return { notes: next };
     });
@@ -485,15 +641,38 @@ const useStore = create((set, get) => ({
 
   deleteCountdown: (id) => {
     set((state) => {
-      const next = state.countdowns.filter(c => c !== id);
+      const next = state.countdowns.filter(c => c.id !== id);
       saveToStorage('countdownData', next);
       return { countdowns: next };
     });
     debounceSyncToCloud(get);
   },
 
+  // ── Pomodoro Stats (persisted) ─────────────────────────────────
+  pomodoroStats: loadFromStorage('pomodoroStats', { totalSessions: 0, todaySessions: 0, lastSessionDate: null }),
+
+  addPomodoroSession: () => {
+    set((state) => {
+      const today = new Date().toISOString().split('T')[0];
+      const stats = { ...state.pomodoroStats };
+      if (stats.lastSessionDate !== today) {
+        stats.todaySessions = 0;
+        stats.lastSessionDate = today;
+      }
+      stats.totalSessions++;
+      stats.todaySessions++;
+      saveToStorage('pomodoroStats', stats);
+      return { pomodoroStats: stats };
+    });
+    debounceSyncToCloud(get);
+  },
+
   // ── Settings & Streak ─────────────────────────────────────────
-  settings: loadFromStorage('appSettings', initialUserData.appSettings),
+  settings: {
+    ...initialUserData.appSettings,
+    ...loadFromStorage('appSettings', initialUserData.appSettings)
+  },
+
   updateSettings: (newSettings) => {
     set((state) => {
       const next = { ...state.settings, ...newSettings };
@@ -501,6 +680,39 @@ const useStore = create((set, get) => ({
       return { settings: next };
     });
     debounceSyncToCloud(get);
+  },
+
+  updatePinHash: async (newPin) => {
+    const hashed = await hashPin(newPin);
+    set((state) => {
+      const next = { ...state.settings, pinCode: hashed, pinIsHashed: true, isPinEnabled: true };
+      saveToStorage('appSettings', next);
+      return { settings: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  verifyPin: async (inputPin) => {
+    const state = get();
+    const stored = state.settings?.pinCode || '3804';
+    const isHashed = state.settings?.pinIsHashed === true;
+    
+    if (isHashed) {
+      const inputHash = await hashPin(inputPin);
+      return inputHash === stored;
+    } else {
+      // Legacy plain text — migrate to hashed on match
+      if (inputPin === stored) {
+        const hashed = await hashPin(inputPin);
+        set((st) => {
+          const next = { ...st.settings, pinCode: hashed, pinIsHashed: true };
+          saveToStorage('appSettings', next);
+          return { settings: next };
+        });
+        return true;
+      }
+      return false;
+    }
   },
 
   streak: loadFromStorage('streakData', initialUserData.streakData),

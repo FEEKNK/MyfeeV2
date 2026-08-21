@@ -17,11 +17,16 @@ export default function FlashcardPage() {
     ? vocabulary 
     : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
 
-  function pickRandom(vocab, learned) {
+  function pickRandom(vocab, learned, currentId = null) {
     if (!vocab || vocab.length === 0) return null;
-    const pool = vocab.filter(c => !learned.includes(c.id));
-    const src = pool.length > 0 ? pool : vocab;
-    return src[Math.floor(Math.random() * src.length)];
+    let pool = vocab.filter(c => !learned.includes(c.id));
+    if (pool.length === 0) pool = vocab;
+
+    // Avoid picking the exact same card again if possible
+    let available = pool.filter(c => c.id !== currentId);
+    if (available.length === 0) available = pool;
+
+    return available[Math.floor(Math.random() * available.length)];
   }
 
   useEffect(() => {
@@ -30,7 +35,7 @@ export default function FlashcardPage() {
 
   const next = () => {
     setIsFlipped(false);
-    setTimeout(() => setCurrentCard(pickRandom(filteredVocab, learnedCards)), 150);
+    setTimeout(() => setCurrentCard(pickRandom(filteredVocab, learnedCards, currentCard?.id)), 150);
   };
 
   const handleSpeak = (e, text) => {
@@ -139,18 +144,25 @@ export default function FlashcardPage() {
                 </div>
               </div>
               <div className="relative z-10 flex gap-2">
-                <motion.button whileTap={{ scale: 0.95 }} onClick={(e) => { e.stopPropagation(); toggleLearned(currentCard.id); next(); }}
-                  className={`flex-1 py-3 rounded-xl font-bold text-sm border flex items-center justify-center gap-2 transition-colors ${isLearned ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-                  <CheckCircle className="w-4 h-4" />{isLearned ? 'จำได้แล้ว' : 'ทำเครื่องหมายว่าจำได้'}
-                </motion.button>
-                <motion.button whileTap={{ scale: 0.9 }} onClick={(e) => { e.stopPropagation(); next(); }}
-                  className="p-3 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
-                  <RefreshCw className="w-5 h-5" />
-                </motion.button>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mx-auto">Tap to flip back</span>
               </div>
             </div>
           </motion.div>
         </div>
+      </div>
+
+      {/* Controls (Always Visible) */}
+      <div className="flex gap-2 w-full mt-2">
+        <motion.button whileTap={{ scale: 0.95 }} onClick={() => { toggleLearned(currentCard.id); next(); }}
+          className={`flex-1 py-3.5 rounded-2xl font-bold text-sm border flex items-center justify-center gap-2 transition-colors ${isLearned ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+          <CheckCircle className="w-5 h-5" />
+          {isLearned ? 'จำได้แล้ว' : 'ทำเครื่องหมายว่าจำได้'}
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.9 }} onClick={next}
+          className="px-6 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30 flex flex-col items-center justify-center gap-1">
+          <RefreshCw className="w-5 h-5" />
+          <span className="text-[10px] font-bold uppercase">ถัดไป</span>
+        </motion.button>
       </div>
 
       {/* Tags */}

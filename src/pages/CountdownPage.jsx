@@ -18,6 +18,7 @@ export default function CountdownPage() {
   const { countdowns, addCountdown, deleteCountdown } = useStore();
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [, forceUpdate] = useState(0);
 
   // refresh every minute
@@ -33,6 +34,16 @@ export default function CountdownPage() {
     if (!name.trim() || !date) return;
     addCountdown(name, date);
     setName(''); setDate('');
+  };
+
+  const handleDelete = (id) => {
+    if (confirmDeleteId === id) {
+      deleteCountdown(id);
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+    }
   };
 
   return (
@@ -91,9 +102,9 @@ export default function CountdownPage() {
                       {new Date(item.date).toLocaleDateString('th-TH', { dateStyle: 'long' })}
                     </p>
                   </div>
-                  <motion.button whileTap={{ scale: 0.8 }} onClick={() => deleteCountdown(item.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all">
-                    <Trash2 className="w-4 h-4" />
+                  <motion.button whileTap={{ scale: 0.8 }} onClick={() => handleDelete(item.id)}
+                    className={`p-1.5 transition-all ${confirmDeleteId === item.id ? 'text-red-400 bg-red-500/20 rounded-lg' : 'text-gray-500 hover:text-red-400'}`}>
+                    {confirmDeleteId === item.id ? <span className="text-[10px] font-bold">ยืนยัน</span> : <Trash2 className="w-4 h-4" />}
                   </motion.button>
                 </div>
               </motion.div>

@@ -7,6 +7,8 @@ export const initialUserData = {
     dailyBudget: 0,
     monthlyBudget: 0,
     lastBackupDate: null,
+    pinCode: '3804',
+    isPinEnabled: true,
   },
   streakData: {
     count: 1,

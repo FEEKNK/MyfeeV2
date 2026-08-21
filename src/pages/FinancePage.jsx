@@ -1,48 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
-import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Settings2, Check, X, Calendar, Folder, Wallet } from 'lucide-react';
+import {
+  ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Check, X, Calendar, Folder, Wallet,
+  PieChart as PieChartIcon, BarChart3, Pencil, Repeat
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const COLORS = ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9'];
 
 export default function FinancePage() {
   const navigate = useNavigate();
   const {
-    finance,
-    expenseCategories,
-    incomeCategories,
-    addCategory,
-    deleteCategory,
-    addTransaction,
-    deleteTransaction,
-    settings,
+    finance, expenseCategories, incomeCategories,
+    addCategory, deleteCategory, addTransaction, deleteTransaction, editTransaction,
+    recurringTransactions, processRecurringTransactions, addRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction,
+    settings
   } = useStore();
 
+  const [viewFilter, setViewFilter] = useState('thisMonth'); // 'thisMonth' | 'all' | 'charts' | 'recurring'
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState('expense');
   const [category, setCategory] = useState(expenseCategories[0] || 'อาหาร');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [viewFilter, setViewFilter] = useState('thisMonth'); // 'thisMonth' | 'all'
-
+  
   // Category management state
   const [isManagingCategories, setIsManagingCategories] = useState(false);
   const [showAddCategoryInput, setShowAddCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
+  // Editing & Deleting states
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+
+  // Recurring form
+  const [showRecurringForm, setShowRecurringForm] = useState(false);
+  const [recType, setRecType] = useState('expense');
+  const [recCategory, setRecCategory] = useState(expenseCategories[0] || 'อาหาร');
+  const [recAmount, setRecAmount] = useState('');
+  const [recNote, setRecNote] = useState('');
+  const [recDay, setRecDay] = useState('1');
+
+  // Process recurring transactions on load
+  useEffect(() => {
+    processRecurringTransactions();
+  }, [processRecurringTransactions]);
+
   const currentCategories = type === 'expense' ? expenseCategories : incomeCategories;
-
   const now = new Date();
-  const displayedList = viewFilter === 'thisMonth'
-    ? finance.filter(t => {
-        const d = new Date(t.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      })
-    : finance;
 
-  const income = displayedList.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = displayedList.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  // Filter lists
+  const thisMonthList = finance.filter(t => {
+    const d = new Date(t.date);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  const displayedList = viewFilter === 'thisMonth' ? thisMonthList : finance;
+
+  // Summaries
+  const income = thisMonthList.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = thisMonthList.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const balance = income - expense;
 
   const handleAdd = (e) => {
@@ -50,9 +71,7 @@ export default function FinancePage() {
     const num = parseFloat(amount);
     if (!amount || isNaN(num) || num <= 0) return;
     addTransaction(type, category, amount, note, null);
-    setAmount('');
-    setNote('');
-    setShowForm(false);
+    setAmount(''); setNote(''); setShowForm(false);
   };
 
   const handleCreateCategory = (e) => {
@@ -71,316 +90,387 @@ export default function FinancePage() {
     deleteCategory(type, catName);
     if (category === catName) {
       const remaining = currentCategories.filter(c => c !== catName);
-      if (remaining.length > 0) {
-        setCategory(remaining[0]);
-      }
+      if (remaining.length > 0) setCategory(remaining[0]);
     }
   };
 
+  const handleDelete = (id) => {
+    if (confirmDeleteId === id) {
+      deleteTransaction(id);
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+    }
+  };
+
+  const startEdit = (tx) => {
+    setEditingId(tx.id);
+    setEditAmount(tx.amount.toString());
+    setEditNote(tx.note);
+    setEditCategory(tx.category);
+  };
+
+  const saveEdit = () => {
+    editTransaction(editingId, { amount: editAmount, note: editNote, category: editCategory });
+    setEditingId(null);
+  };
+
+  const handleAddRecurring = (e) => {
+    e.preventDefault();
+    const num = parseFloat(recAmount);
+    const day = parseInt(recDay);
+    if (!recAmount || isNaN(num) || num <= 0 || isNaN(day) || day < 1 || day > 31) return;
+    addRecurringTransaction(recType, recCategory, num, recNote, day);
+    setRecAmount(''); setRecNote(''); setShowRecurringForm(false);
+  };
+
   const fmt = (n) => n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  // ── Chart Data Calculation ───────────────────────────
+  const getDonutData = () => {
+    const expenses = thisMonthList.filter(t => t.type === 'expense');
+    if (expenses.length === 0) return [];
+    
+    const sums = {};
+    expenses.forEach(t => sums[t.category] = (sums[t.category] || 0) + t.amount);
+    
+    return Object.entries(sums)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, val], i) => ({ 
+        cat, val, 
+        pct: (val / expense) * 100, 
+        color: COLORS[i % COLORS.length] 
+      }));
+  };
+
+  const getBarChartData = () => {
+    const days = [];
+    let maxVal = 0;
+    // Last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const sum = finance
+        .filter(t => t.type === 'expense' && t.date.startsWith(ds))
+        .reduce((s, t) => s + t.amount, 0);
+      maxVal = Math.max(maxVal, sum);
+      days.push({ day: d.getDate(), month: THAI_MONTHS[d.getMonth()], sum });
+    }
+    return { days, maxVal: maxVal || 1 }; // prevent div by zero
+  };
+
+  const renderDonutChart = () => {
+    const data = getDonutData();
+    if (data.length === 0) return <div className="text-gray-500 text-sm text-center py-8">ไม่มีข้อมูลรายจ่ายเดือนนี้</div>;
+
+    let cumulativePct = 0;
+    return (
+      <div className="flex items-center gap-6 p-4">
+        <svg viewBox="0 0 100 100" className="w-28 h-28 transform -rotate-90">
+          {data.map((d) => {
+            const strokeDasharray = `${d.pct} 100`;
+            const strokeDashoffset = -cumulativePct;
+            cumulativePct += d.pct;
+            return (
+              <circle key={d.cat} cx="50" cy="50" r="40" fill="transparent"
+                stroke={d.color} strokeWidth="20" strokeDasharray={strokeDasharray} strokeDashoffset={strokeDashoffset}
+                className="transition-all duration-500" />
+            );
+          })}
+        </svg>
+        <div className="flex-1 space-y-2">
+          {data.slice(0, 4).map(d => (
+            <div key={d.cat} className="flex justify-between items-center text-xs">
+              <div className="flex items-center gap-1.5 text-gray-300">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></span>
+                {d.cat}
+              </div>
+              <div className="font-bold text-white dark-invert">฿{fmt(d.val)}</div>
+            </div>
+          ))}
+          {data.length > 4 && <div className="text-xs text-gray-500 italic">และอื่นๆ...</div>}
+        </div>
+      </div>
+    );
+  };
+
+  const renderBarChart = () => {
+    const { days, maxVal } = getBarChartData();
+    return (
+      <div className="h-32 flex items-end justify-between gap-1 p-2">
+        {days.map((d, i) => {
+          const height = Math.max(5, (d.sum / maxVal) * 100);
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <div className="w-full bg-white/5 rounded-t-sm flex items-end overflow-hidden h-24">
+                <motion.div 
+                  initial={{ height: 0 }} animate={{ height: `${height}%` }}
+                  className="w-full bg-pink-500/50 hover:bg-pink-400 transition-colors rounded-t-sm" 
+                  title={`฿${fmt(d.sum)}`}
+                />
+              </div>
+              <div className="text-[9px] text-gray-500 font-medium">{d.day}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => navigate('/')}
-          className="p-2.5 glass rounded-xl border border-white/10 text-white"
-        >
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate('/')} className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert">
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="text-center">
-          <h1 className="font-black text-white text-lg">Finance</h1>
+          <h1 className="font-black text-white dark-invert text-lg">Finance</h1>
           <p className="text-xs text-gray-400">{finance.length} รายการทั้งหมด</p>
         </div>
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => setShowForm(!showForm)}
-          className={`p-2.5 rounded-xl border transition-colors ${
-            showForm
-              ? 'bg-pink-500/20 border-pink-500/30 text-pink-400'
-              : 'glass border-white/10 text-white'
-          }`}
-        >
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowForm(!showForm)}
+          className={`p-2.5 rounded-xl border transition-colors ${showForm ? 'bg-pink-500/20 border-pink-500/30 text-pink-400' : 'glass border-white/10 text-white dark-invert'}`}>
           <Plus className="w-5 h-5" />
         </motion.button>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: 'รายรับ', val: income, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-          { label: 'รายจ่าย', val: expense, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' },
-          { label: 'คงเหลือ', val: balance, color: balance >= 0 ? 'text-blue-400' : 'text-red-400', bg: 'bg-blue-500/10 border-blue-500/20' },
-        ].map(({ label, val, color, bg }) => (
-          <div key={label} className={`rounded-2xl p-3 border text-center ${bg}`}>
-            <div className={`text-base font-black ${color}`}>฿{fmt(Math.abs(val || 0))}</div>
-            <div className="text-[10px] text-gray-400 mt-0.5">{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Budget Progress */}
-      {settings?.monthlyBudget > 0 && viewFilter === 'thisMonth' && (
-        <div className="glass-dark rounded-2xl border border-white/10 p-3">
-          <div className="flex justify-between items-center text-xs mb-1.5">
-            <span className="text-gray-400 font-bold">งบประมาณเดือนนี้</span>
-            <span className={expense > settings.monthlyBudget ? 'text-red-400 font-bold' : 'text-blue-400 font-bold'}>
-              ฿{fmt(expense)} / ฿{fmt(settings.monthlyBudget)}
-            </span>
-          </div>
-          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <motion.div 
-              className={`h-full rounded-full ${expense > settings.monthlyBudget ? 'bg-red-500' : 'bg-blue-500'}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (expense / settings.monthlyBudget) * 100)}%` }}
-            />
-          </div>
+      {(viewFilter === 'thisMonth' || viewFilter === 'charts') && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'รายรับ', val: income, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+            { label: 'รายจ่าย', val: expense, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' },
+            { label: 'คงเหลือ', val: balance, color: balance >= 0 ? 'text-blue-400' : 'text-red-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+          ].map(({ label, val, color, bg }) => (
+            <div key={label} className={`rounded-2xl p-3 border text-center ${bg}`}>
+              <div className={`text-base font-black ${color}`}>฿{fmt(Math.abs(val || 0))}</div>
+              <div className="text-[10px] text-gray-400 dark-invert mt-0.5">{label}</div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Filter Tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setViewFilter('thisMonth')}
-          className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
-            viewFilter === 'thisMonth'
-              ? 'bg-pink-500/20 border-pink-500/30 text-pink-400'
-              : 'bg-white/5 border-white/10 text-gray-400'
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5" />
-          <span>เดือนนี้ ({THAI_MONTHS[now.getMonth()]})</span>
-        </button>
-        <button
-          onClick={() => setViewFilter('all')}
-          className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
-            viewFilter === 'all'
-              ? 'bg-pink-500/20 border-pink-500/30 text-pink-400'
-              : 'bg-white/5 border-white/10 text-gray-400'
-          }`}
-        >
-          <Folder className="w-3.5 h-3.5" />
-          <span>ทั้งหมด ({finance.length})</span>
-        </button>
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        {[
+          { id: 'thisMonth', icon: Calendar, label: 'เดือนนี้' },
+          { id: 'all', icon: Folder, label: 'ทั้งหมด' },
+          { id: 'charts', icon: PieChartIcon, label: 'กราฟ' },
+          { id: 'recurring', icon: Repeat, label: 'ประจำ' }
+        ].map(t => (
+          <button key={t.id} onClick={() => setViewFilter(t.id)}
+            className={`flex-none px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
+              viewFilter === t.id ? 'bg-pink-500/20 border-pink-500/30 text-pink-400' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'
+            }`}>
+            <t.icon className="w-3.5 h-3.5" /> <span>{t.label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Add Form */}
       <AnimatePresence>
         {showForm && (
-          <motion.form
-            onSubmit={handleAdd}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden glass-dark rounded-2xl border border-white/10 p-4 flex flex-col gap-3"
-          >
-            {/* Type Toggle */}
+          <motion.form onSubmit={handleAdd} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden glass-dark rounded-2xl border border-white/10 p-4 flex flex-col gap-3">
             <div className="flex gap-2">
-              {[
-                ['expense', 'รายจ่าย', 'bg-red-500/20 border-red-500/30 text-red-400'],
-                ['income', 'รายรับ', 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'],
-              ].map(([val, label, cls]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => {
-                    setType(val);
-                    const cats = val === 'expense' ? expenseCategories : incomeCategories;
-                    setCategory(cats[0] || (val === 'expense' ? 'อาหาร' : 'เงินเดือน/รายได้'));
-                  }}
-                  className={`flex-1 py-2 rounded-xl text-sm font-bold border transition-colors ${
-                    type === val ? cls : 'bg-white/5 border-white/10 text-gray-500'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              <button type="button" onClick={() => { setType('expense'); setCategory(expenseCategories[0]); }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex justify-center items-center gap-1.5 ${
+                  type === 'expense' ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-white/5 border-white/10 text-gray-400'
+                }`}>
+                <TrendingDown className="w-4 h-4" /> รายจ่าย
+              </button>
+              <button type="button" onClick={() => { setType('income'); setCategory(incomeCategories[0]); }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex justify-center items-center gap-1.5 ${
+                  type === 'income' ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-white/5 border-white/10 text-gray-400'
+                }`}>
+                <TrendingUp className="w-4 h-4" /> รายรับ
+              </button>
+            </div>
+            
+            <div className="flex justify-between items-center px-1">
+              <span className="text-xs text-gray-400 font-bold uppercase tracking-wide">หมวดหมู่</span>
+              <button type="button" onClick={() => setIsManagingCategories(!isManagingCategories)}
+                className={`p-1.5 rounded-lg transition-colors ${isManagingCategories ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
             </div>
 
-            {/* Category Header & Management Controls */}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                หมวดหมู่ {type === 'expense' ? 'รายจ่าย' : 'รายรับ'}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsManagingCategories(!isManagingCategories)}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border flex items-center gap-1 transition-colors ${
-                    isManagingCategories
-                      ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
-                      : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <Settings2 className="w-3 h-3" />
-                  {isManagingCategories ? 'เสร็จสิ้น' : 'จัดการ'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCategoryInput(!showAddCategoryInput)}
-                  className="px-2 py-1 rounded-lg text-[10px] font-bold border border-blue-500/30 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-3 h-3" />
-                  เพิ่มหมวดหมู่
-                </button>
-              </div>
-            </div>
-
-            {/* Add Custom Category Inline Form */}
-            <AnimatePresence>
-              {showAddCategoryInput && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 flex gap-2 items-center"
-                >
-                  <input
-                    type="text"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="ชื่อหมวดหมู่ใหม่ (เช่น ค่ากาแฟ, ขายของ)..."
-                    className="flex-1 bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs outline-none focus:border-blue-400"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCreateCategory(e);
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCreateCategory}
-                    className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCategoryInput(false)}
-                    className="p-1.5 text-gray-400 hover:text-white transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Category List Pills */}
-            <div className="flex gap-2 flex-wrap max-h-36 overflow-y-auto pr-0.5">
+            {/* Categories */}
+            <div className="flex flex-wrap gap-2">
               {currentCategories.map((c) => {
                 const isSelected = category === c;
-                const activeColor =
-                  type === 'expense'
-                    ? 'bg-red-500/20 border-red-500/30 text-red-400'
-                    : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400';
-
                 return (
-                  <div key={c} className="relative group">
-                    <button
-                      type="button"
-                      onClick={() => !isManagingCategories && setCategory(c)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex items-center gap-1.5 ${
-                        isSelected ? activeColor : 'bg-white/5 border-white/10 text-gray-400 hover:text-gray-200'
-                      }`}
-                    >
-                      <span>{c}</span>
-                      {/* Delete button in management mode */}
-                      {isManagingCategories && (
-                        <span
-                          onClick={(e) => handleDeleteCategory(c, e)}
-                          className="p-0.5 rounded-full bg-red-500/30 text-red-300 hover:bg-red-500 hover:text-white transition-colors cursor-pointer ml-0.5"
-                          title={`ลบหมวดหมู่ ${c}`}
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </span>
-                      )}
-                    </button>
-                  </div>
+                  <button key={c} type="button" onClick={() => !isManagingCategories && setCategory(c)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                      isSelected ? (type === 'expense' ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400') : 'bg-white/5 border-white/10 text-gray-400'
+                    }`}>
+                    <span>{c}</span>
+                    {isManagingCategories && (
+                      <span onClick={(e) => handleDeleteCategory(c, e)} className="p-0.5 rounded-full bg-red-500/30 text-red-300 ml-0.5">
+                        <X className="w-2.5 h-2.5" />
+                      </span>
+                    )}
+                  </button>
                 );
               })}
+              {isManagingCategories && (
+                <button type="button" onClick={() => setShowAddCategoryInput(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border bg-white/5 border-white/10 text-gray-400 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> เพิ่ม
+                </button>
+              )}
             </div>
 
-            <input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              type="number"
-              placeholder="จำนวนเงิน (บาท)"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-500 outline-none focus:border-pink-500/50"
-            />
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="หมายเหตุ (เช่น grab, ค่าเน็ต)"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-500 outline-none"
-            />
+            {showAddCategoryInput && isManagingCategories && (
+              <div className="flex gap-2">
+                <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="ชื่อหมวดหมู่ใหม่"
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white dark-invert text-sm outline-none" />
+                <button type="button" onClick={handleCreateCategory} className="p-2 bg-pink-500/20 text-pink-400 rounded-xl">
+                  <Check className="w-5 h-5" />
+                </button>
+              </div>
+            )}
 
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              type="submit"
-              className={`py-2.5 rounded-xl font-bold text-sm border ${
-                type === 'expense'
-                  ? 'bg-red-500/20 border-red-500/30 text-red-400'
-                  : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-              }`}
-            >
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" placeholder="จำนวนเงิน (บาท)"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white dark-invert text-sm outline-none" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="หมายเหตุ (เช่น grab, ค่าเน็ต)"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white dark-invert text-sm outline-none" />
+
+            <motion.button whileTap={{ scale: 0.95 }} type="submit"
+              className={`py-2.5 rounded-xl font-bold text-sm border ${type === 'expense' ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'}`}>
               + บันทึก
             </motion.button>
           </motion.form>
         )}
       </AnimatePresence>
 
-      {/* Transaction List */}
-      <div className="flex-1 overflow-y-auto space-y-2">
-        <AnimatePresence>
-          {displayedList.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16 text-gray-500">
-              <Wallet className="w-12 h-12 text-pink-400/40 mx-auto mb-3" />
-              <p className="text-sm">ยังไม่มีรายการ</p>
-            </motion.div>
-          ) : (
-            displayedList.map((tx) => {
-              const d = new Date(tx.date);
-              return (
-                <motion.div
-                  key={tx.id}
-                  layout
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 40 }}
-                  className="flex items-center gap-3 p-3.5 glass-dark rounded-2xl border border-white/10 group"
-                >
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      tx.type === 'expense' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
-                    }`}
-                  >
-                    {tx.type === 'expense' ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
+        {viewFilter === 'charts' && (
+          <div className="space-y-4">
+            <div className="glass-dark border border-white/10 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><PieChartIcon className="w-3.5 h-3.5"/> สัดส่วนรายจ่าย</h3>
+              {renderDonutChart()}
+            </div>
+            <div className="glass-dark border border-white/10 rounded-2xl p-4">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5"/> รายจ่าย 7 วันล่าสุด</h3>
+              {renderBarChart()}
+            </div>
+          </div>
+        )}
+
+        {viewFilter === 'recurring' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Repeat className="w-3.5 h-3.5"/> รายการประจำเดือน</h3>
+              <button onClick={() => setShowRecurringForm(!showRecurringForm)} className="text-xs text-pink-400 bg-pink-500/20 px-2 py-1 rounded-lg">+ เพิ่มใหม่</button>
+            </div>
+            
+            <AnimatePresence>
+              {showRecurringForm && (
+                <motion.form onSubmit={handleAddRecurring} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden glass-dark rounded-2xl border border-pink-500/30 p-4 flex flex-col gap-3">
+                  <div className="text-xs text-gray-300 font-bold mb-1">สร้างรายการหัก/รับ อัตโนมัติทุกเดือน</div>
+                  <select value={recType} onChange={e => { setRecType(e.target.value); setRecCategory(e.target.value === 'expense' ? expenseCategories[0] : incomeCategories[0]); }}
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white dark-invert text-sm outline-none">
+                    <option value="expense" className="text-black">รายจ่าย</option>
+                    <option value="income" className="text-black">รายรับ</option>
+                  </select>
+                  <input value={recAmount} onChange={e => setRecAmount(e.target.value)} type="number" placeholder="จำนวนเงิน" className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white dark-invert text-sm outline-none" />
+                  <input value={recNote} onChange={e => setRecNote(e.target.value)} placeholder="รายละเอียด (เช่น ค่าเน็ต, ค่าห้อง)" className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white dark-invert text-sm outline-none" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">หักทุกวันที่:</span>
+                    <input value={recDay} onChange={e => setRecDay(e.target.value)} type="number" min="1" max="31" className="w-16 bg-white/5 border border-white/10 rounded-xl px-2 py-1 text-center text-white dark-invert text-sm outline-none" />
                   </div>
+                  <button type="submit" className="mt-2 py-2 bg-pink-500/20 text-pink-400 font-bold rounded-xl border border-pink-500/30">บันทึกรายการประจำ</button>
+                </motion.form>
+              )}
+            </AnimatePresence>
+
+            {recurringTransactions.length === 0 ? (
+              <div className="text-center py-10 text-gray-500">
+                <Repeat className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">ยังไม่มีรายการประจำ</p>
+              </div>
+            ) : (
+              recurringTransactions.map(r => (
+                <div key={r.id} className={`flex items-center gap-3 p-3.5 glass-dark rounded-2xl border ${r.isActive ? 'border-white/10' : 'border-white/5 opacity-50'}`}>
+                  <button onClick={() => toggleRecurringTransaction(r.id)} className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${r.isActive ? (r.type === 'expense' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400') : 'bg-gray-500/20 text-gray-400'}`}>
+                    <Repeat className="w-4 h-4" />
+                  </button>
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-white text-sm truncate">{tx.category}</div>
-                    <div className="text-xs text-gray-400 flex items-center gap-1.5">
-                      <span>{d.getDate()} {THAI_MONTHS[d.getMonth()]}</span>
-                      {tx.note && <span className="text-gray-500">· {tx.note}</span>}
-                    </div>
+                    <div className="font-bold text-white dark-invert text-sm truncate">{r.note || r.category}</div>
+                    <div className="text-xs text-gray-400">หักวันที่ {r.dayOfMonth} ของทุกเดือน</div>
                   </div>
-                  <div className={`font-black text-sm ${tx.type === 'expense' ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {tx.type === 'expense' ? '-' : '+'}฿{fmt(tx.amount)}
+                  <div className={`font-black text-sm ${r.type === 'expense' ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {r.type === 'expense' ? '-' : '+'}฿{fmt(r.amount)}
                   </div>
-                  <motion.button
-                    whileTap={{ scale: 0.8 }}
-                    onClick={() => deleteTransaction(tx.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 transition-all"
-                  >
+                  <button onClick={() => deleteRecurringTransaction(r.id)} className="p-1.5 text-gray-500 hover:text-red-400 bg-white/5 rounded-lg">
                     <Trash2 className="w-4 h-4" />
-                  </motion.button>
-                </motion.div>
-              );
-            })
-          )}
-        </AnimatePresence>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {(viewFilter === 'thisMonth' || viewFilter === 'all') && (
+          <AnimatePresence>
+            {displayedList.length === 0 ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16 text-gray-500">
+                <Wallet className="w-12 h-12 text-pink-400/40 mx-auto mb-3" />
+                <p className="text-sm">ยังไม่มีรายการ</p>
+              </motion.div>
+            ) : (
+              displayedList.map((tx) => {
+                const d = new Date(tx.date);
+                const isEditing = editingId === tx.id;
+                return (
+                  <motion.div key={tx.id} layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}
+                    className="flex flex-col p-3.5 glass-dark rounded-2xl border border-white/10 group gap-2"
+                  >
+                    {isEditing ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <input value={editAmount} onChange={e => setEditAmount(e.target.value)} type="number" className="w-24 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white dark-invert text-sm outline-none" />
+                          <input value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="หมายเหตุ" className="flex-1 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white dark-invert text-sm outline-none" />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button onClick={saveEdit} className="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-bold">บันทึก</button>
+                          <button onClick={() => setEditingId(null)} className="px-3 py-1 bg-gray-500/20 text-gray-400 rounded-lg text-xs font-bold">ยกเลิก</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'expense' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                          {tx.type === 'expense' ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-white dark-invert text-sm truncate">{tx.category}</div>
+                          <div className="text-xs text-gray-400 flex items-center gap-1.5">
+                            <span>{d.getDate()} {THAI_MONTHS[d.getMonth()]}</span>
+                            {tx.note && <span className="text-gray-500 truncate">· {tx.note}</span>}
+                          </div>
+                        </div>
+                        <div className={`font-black text-sm ${tx.type === 'expense' ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {tx.type === 'expense' ? '-' : '+'}฿{fmt(tx.amount)}
+                        </div>
+                        <button onClick={() => startEdit(tx)} className="p-1.5 text-gray-500 hover:text-blue-400 transition-all">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(tx.id)} 
+                          className={`p-1.5 transition-all ${confirmDeleteId === tx.id ? 'text-red-400 bg-red-500/20 rounded-lg' : 'text-gray-500 hover:text-red-400'}`}>
+                          {confirmDeleteId === tx.id ? <span className="text-[10px] font-bold">ยืนยัน</span> : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })
+            )}
+          </AnimatePresence>
+        )}
       </div>
     </div>
   );
