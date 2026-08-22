@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
 import {
   ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Check, X, Calendar, Folder, Wallet,
-  PieChart as PieChartIcon, BarChart3, Pencil, Repeat
+  PieChart as PieChartIcon, BarChart3, Pencil, Repeat, Settings2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
