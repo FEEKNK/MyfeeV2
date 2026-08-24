@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   Moon,
@@ -9,6 +9,13 @@ import {
   Flame,
   Lock,
   KeyRound,
+  Download,
+  Upload,
+  Database,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
@@ -16,8 +23,106 @@ import ChangePinModal from '../components/ChangePinModal';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { settings, updateSettings, streak } = useStore();
+  const {
+    settings,
+    updateSettings,
+    streak,
+    habits,
+    finance,
+    todos,
+    learnedCards,
+    notes,
+    exportAllData,
+    importAllData,
+  } = useStore();
+
   const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(null); // { type: 'success' | 'error', message: string }
+  const [copied, setCopied] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleExport = () => {
+    try {
+      const data = exportAllData();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `myfee_backup_${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupStatus({
+        type: 'success',
+        message: `สำรองข้อมูลสำเร็จ! ดาวน์โหลดไฟล์ myfee_backup_${dateStr}.json เรียบร้อย`,
+      });
+      setTimeout(() => setBackupStatus(null), 4000);
+    } catch (err) {
+      setBackupStatus({
+        type: 'error',
+        message: `เกิดข้อผิดพลาดในการสำรองข้อมูล: ${err.message}`,
+      });
+      setTimeout(() => setBackupStatus(null), 4000);
+    }
+  };
+
+  const handleCopyJson = async () => {
+    try {
+      const data = exportAllData();
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopied(true);
+      setBackupStatus({
+        type: 'success',
+        message: 'คัดลอกข้อความ JSON ลงคลิปบอร์ดแล้ว',
+      });
+      setTimeout(() => {
+        setCopied(false);
+        setBackupStatus(null);
+      }, 3000);
+    } catch {
+      setBackupStatus({
+        type: 'error',
+        message: 'ไม่สามารถคัดลอกได้ กรุณาใช้ปุ่มดาวน์โหลดไฟล์',
+      });
+      setTimeout(() => setBackupStatus(null), 3000);
+    }
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result);
+        const success = importAllData(parsed);
+        if (success) {
+          setBackupStatus({
+            type: 'success',
+            message: 'กู้คืนข้อมูลทั้งหมดเรียบร้อยแล้ว!',
+          });
+        } else {
+          setBackupStatus({
+            type: 'error',
+            message: 'รูปแบบไฟล์ไม่ถูกต้อง กรุณาใช้ไฟล์ JSON ที่สำรองไว้',
+          });
+        }
+      } catch (err) {
+        setBackupStatus({
+          type: 'error',
+          message: 'ไม่สามารถอ่านไฟล์ได้: ' + err.message,
+        });
+      }
+      setTimeout(() => setBackupStatus(null), 4000);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -29,7 +134,7 @@ export default function SettingsPage() {
         >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
-        <h1 className="font-black text-white dark-invert text-lg">ตั้งค่า & สถิติ</h1>
+        <h1 className="font-black text-white dark-invert text-lg">ตั้งค่า & ข้อมูล</h1>
         <div className="w-10" />
       </div>
 
@@ -47,7 +152,105 @@ export default function SettingsPage() {
       </div>
 
       {/* Settings Options */}
-      <div className="flex-1 overflow-y-auto space-y-4">
+      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+        {/* Backup & Restore Card */}
+        <div className="glass-dark rounded-2xl border border-emerald-500/30 p-5 space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white dark-invert text-sm">สำรอง & กู้คืนข้อมูล (Backup)</h3>
+                <p className="text-xs text-gray-400">เก็บรักษาประวัติ คำศัพท์ Habit การเงิน ปลอดภัย 100%</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Summary Chips */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
+            <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-center">
+              <span className="text-[10px] text-gray-400 block">Habits</span>
+              <span className="text-xs font-bold text-white">{habits.length} รายการ</span>
+            </div>
+            <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-center">
+              <span className="text-[10px] text-gray-400 block">การเงิน</span>
+              <span className="text-xs font-bold text-emerald-400">{finance.length} รายการ</span>
+            </div>
+            <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-center">
+              <span className="text-[10px] text-gray-400 block">คำศัพท์จำได้</span>
+              <span className="text-xs font-bold text-blue-400">{learnedCards.length} คำ</span>
+            </div>
+            <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-center">
+              <span className="text-[10px] text-gray-400 block">To-Do / โน้ต</span>
+              <span className="text-xs font-bold text-purple-400">{todos.length + notes.length} รายการ</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleExport}
+              className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              ดาวน์โหลดไฟล์สำรอง (.json)
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => fileInputRef.current?.click()}
+              className="py-3 px-4 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+            >
+              <Upload className="w-4 h-4 text-emerald-400" />
+              นำเข้า / กู้คืน
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleCopyJson}
+              className="py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all"
+              title="คัดลอก JSON"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </motion.button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+
+          {/* Feedback alert */}
+          <AnimatePresence>
+            {backupStatus && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                  backupStatus.type === 'success'
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                    : 'bg-red-500/15 border-red-500/30 text-red-300'
+                }`}
+              >
+                {backupStatus.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                <span>{backupStatus.message}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="glass-dark rounded-2xl border border-white/10 p-5 space-y-5">
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">แอปพลิเคชัน</h3>
 

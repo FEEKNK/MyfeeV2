@@ -765,30 +765,86 @@ const useStore = create((set, get) => ({
     debounceSyncToCloud(get);
   },
 
-  // ── Data Migration ────────────────────────────────────────────
+  // ── Data Backup & Migration ───────────────────────────────────
+  exportAllData: () => {
+    const state = get();
+    return {
+      version: '2.0',
+      exportedAt: new Date().toISOString(),
+      learnedCards: state.learnedCards || [],
+      favCards: state.favCards || [],
+      todoData: state.todos || [],
+      habitData: state.habits || [],
+      financeData: state.finance || [],
+      expenseCategories: state.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
+      incomeCategories: state.incomeCategories || DEFAULT_INCOME_CATEGORIES,
+      goalsData: state.goals || [],
+      notesData: state.notes || [],
+      projectsData: state.projects || [],
+      countdownData: state.countdowns || [],
+      appSettings: state.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 },
+      streakData: state.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 },
+      myfee_cr_progress: state.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
+      homeFeatureOrder: state.homeFeatureOrder || DEFAULT_FEATURE_ORDER,
+    };
+  },
+
   importAllData: (data) => {
     const raw = (data && data.data) ? data.data : data;
-    set(() => {
-      const keys = ['learnedCards','favCards','todoData','habitData','financeData','expenseCategories','incomeCategories','goalsData','notesData','projectsData','countdownData','appSettings','streakData','myfee_cr_progress'];
-      keys.forEach(k => { if (raw[k] !== undefined) saveToStorage(k, raw[k]); });
-      return {
-        learnedCards: raw.learnedCards || [],
-        favCards: raw.favCards || [],
-        todos: raw.todoData || [],
-        habits: raw.habitData || DEFAULT_HABITS,
-        finance: raw.financeData || [],
-        expenseCategories: raw.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
-        incomeCategories: raw.incomeCategories || DEFAULT_INCOME_CATEGORIES,
-        goals: raw.goalsData || [],
-        notes: raw.notesData || [],
-        projects: raw.projectsData || [],
-        countdowns: raw.countdownData || [],
-        settings: raw.appSettings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 },
-        streak: raw.streakData || { count: 0, lastDate: null, cardsFlippedToday: 0 },
-        codeReadingProgress: raw.myfee_cr_progress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
-      };
+    if (!raw || typeof raw !== 'object') return false;
+
+    const todos = raw.todoData || raw.todos || [];
+    const habits = raw.habitData || raw.habits || DEFAULT_HABITS;
+    const finance = raw.financeData || raw.finance || [];
+    const learnedCards = raw.learnedCards || [];
+    const favCards = raw.favCards || [];
+    const expenseCategories = raw.expenseCategories || DEFAULT_EXPENSE_CATEGORIES;
+    const incomeCategories = raw.incomeCategories || DEFAULT_INCOME_CATEGORIES;
+    const goals = raw.goalsData || raw.goals || [];
+    const notes = raw.notesData || raw.notes || [];
+    const projects = raw.projectsData || raw.projects || [];
+    const countdowns = raw.countdownData || raw.countdowns || [];
+    const settings = raw.appSettings || raw.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 };
+    const streak = raw.streakData || raw.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 };
+    const codeReadingProgress = raw.myfee_cr_progress || raw.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 };
+    const homeFeatureOrder = raw.homeFeatureOrder || DEFAULT_FEATURE_ORDER;
+
+    saveToStorage('learnedCards', learnedCards);
+    saveToStorage('favCards', favCards);
+    saveToStorage('todoData', todos);
+    saveToStorage('habitData', habits);
+    saveToStorage('financeData', finance);
+    saveToStorage('expenseCategories', expenseCategories);
+    saveToStorage('incomeCategories', incomeCategories);
+    saveToStorage('goalsData', goals);
+    saveToStorage('notesData', notes);
+    saveToStorage('projectsData', projects);
+    saveToStorage('countdownData', countdowns);
+    saveToStorage('appSettings', settings);
+    saveToStorage('streakData', streak);
+    saveToStorage('myfee_cr_progress', codeReadingProgress);
+    saveToStorage('homeFeatureOrder', homeFeatureOrder);
+
+    set({
+      learnedCards,
+      favCards,
+      todos,
+      habits,
+      finance,
+      expenseCategories,
+      incomeCategories,
+      goals,
+      notes,
+      projects,
+      countdowns,
+      settings,
+      streak,
+      codeReadingProgress,
+      homeFeatureOrder,
     });
+
     debounceSyncToCloud(get);
+    return true;
   },
 }));
 

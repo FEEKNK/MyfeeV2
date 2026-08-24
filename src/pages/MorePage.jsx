@@ -39,7 +39,7 @@ const CATEGORIES = [
     title: 'สุขภาพ & การตั้งค่า',
     items: [
       { title: 'ฝึกหายใจ (Breathing)', desc: 'Wim Hof Method เติมพลัง', icon: Wind, color: 'from-teal-500 to-emerald-600', to: '/breathing' },
-      { title: 'ตั้งค่า & ข้อมูล (Settings)', desc: 'คลาวด์, ธีม, สถิติ, งบประมาณ', icon: Settings, color: 'from-gray-500 to-slate-600', to: '/settings' },
+      { title: 'ตั้งค่า & ข้อมูล (Settings)', desc: 'สำรองข้อมูล, คลาวด์, ธีม, สถิติ, งบประมาณ', icon: Settings, color: 'from-gray-500 to-slate-600', to: '/settings' },
     ],
   },
 ];
