@@ -4,9 +4,16 @@ import useStore from '../store/useStore';
 import { Volume2, Star, CheckCircle, RefreshCw } from 'lucide-react';
 
 const FlashcardWidget = () => {
-  const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav } = useStore();
+  const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, incrementCardsFlipped } = useStore();
   const [currentCard, setCurrentCard] = useState(null);
   const [isFlipped, setIsFlipped] = useState(false);
+
+  const handleFlip = () => {
+    if (!isFlipped) {
+      incrementCardsFlipped();
+    }
+    setIsFlipped(!isFlipped);
+  };
 
   const pickRandomCard = React.useCallback(() => {
     if (!vocabulary || vocabulary.length === 0) return;
@@ -43,7 +50,7 @@ const FlashcardWidget = () => {
         style={{ transformStyle: "preserve-3d" }}
         animate={{ rotateY: isFlipped ? 180 : 0 }}
         transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }}
-        onClick={() => setIsFlipped(!isFlipped)}
+        onClick={handleFlip}
       >
         {/* FRONT */}
         <div 

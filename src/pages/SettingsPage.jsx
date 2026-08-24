@@ -16,6 +16,9 @@ import {
   AlertCircle,
   Copy,
   Check,
+  Cloud,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
@@ -34,12 +37,37 @@ export default function SettingsPage() {
     notes,
     exportAllData,
     importAllData,
+    isSyncing,
+    lastSyncedAt,
+    cloudSyncError,
+    syncCloudData,
   } = useStore();
 
   const [showChangePinModal, setShowChangePinModal] = useState(false);
   const [backupStatus, setBackupStatus] = useState(null); // { type: 'success' | 'error', message: string }
   const [copied, setCopied] = useState(false);
+  const [manualSyncing, setManualSyncing] = useState(false);
   const fileInputRef = useRef(null);
+
+  const handleManualSync = async () => {
+    setManualSyncing(true);
+    try {
+      await syncCloudData();
+      setBackupStatus({
+        type: 'success',
+        message: 'ซิงค์ข้อมูลกับคลาวด์สำเร็จ! ⚡',
+      });
+      setTimeout(() => setBackupStatus(null), 3000);
+    } catch {
+      setBackupStatus({
+        type: 'error',
+        message: 'เกิดข้อผิดพลาดในการซิงค์',
+      });
+      setTimeout(() => setBackupStatus(null), 3000);
+    } finally {
+      setManualSyncing(false);
+    }
+  };
 
   const handleExport = () => {
     try {
@@ -153,6 +181,63 @@ export default function SettingsPage() {
 
       {/* Settings Options */}
       <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+        {/* Cloud Sync Status Card */}
+        <div className="glass-dark rounded-2xl border border-blue-500/30 p-5 space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl">
+                <Cloud className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-white dark-invert text-sm">คลาวด์ซิงค์เรียลไทม์ (Auto-Sync)</h3>
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400">ซิงค์อัตโนมัติระหว่างมือถือและคอมพิวเตอร์แบบ Single-User</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 text-xs">
+            <div className="text-gray-400">
+              สถานะ: <span className="text-emerald-400 font-bold">เชื่อมต่ออัตโนมัติ</span>
+              {lastSyncedAt && (
+                <span className="text-[11px] text-gray-500 block">
+                  ซิงค์ล่าสุด: {new Date(lastSyncedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleManualSync}
+              disabled={isSyncing || manualSyncing}
+              className="py-2 px-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            >
+              {isSyncing || manualSyncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              ซิงค์ทันที
+            </motion.button>
+          </div>
+
+          {cloudSyncError && (
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">รอการสร้างตารางบน Supabase:</span>{' '}
+                กรุณารันคำสั่งในไฟล์ <code className="bg-black/30 px-1 rounded font-mono">supabase_schema.sql</code> บน Supabase SQL Editor 1 ครั้งเพื่อให้คลาวด์เริ่มทำงาน
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Backup & Restore Card */}
         <div className="glass-dark rounded-2xl border border-emerald-500/30 p-5 space-y-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />

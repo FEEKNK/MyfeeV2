@@ -8,10 +8,17 @@ const LEVELS = ['All', 'A1', 'A2', 'B1', 'B2', 'C1'];
 
 export default function FlashcardPage() {
   const navigate = useNavigate();
-  const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, flashcardFilter, setFlashcardFilter } = useStore();
+  const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, flashcardFilter, setFlashcardFilter, incrementCardsFlipped } = useStore();
   const [currentCard, setCurrentCard] = useState(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [showLearned, setShowLearned] = useState(false);
+
+  const handleFlip = () => {
+    if (!isFlipped) {
+      incrementCardsFlipped();
+    }
+    setIsFlipped(!isFlipped);
+  };
 
   const filteredVocab = flashcardFilter === 'All' 
     ? vocabulary 
@@ -102,7 +109,7 @@ export default function FlashcardPage() {
             style={{ transformStyle: 'preserve-3d' }}
             animate={{ rotateY: isFlipped ? 180 : 0 }}
             transition={{ duration: 0.55, type: 'spring', stiffness: 280, damping: 22 }}
-            onClick={() => setIsFlipped(!isFlipped)}
+            onClick={handleFlip}
           >
             {/* Front */}
             <div className="absolute inset-0 glass-dark rounded-[2rem] p-7 flex flex-col justify-between border border-white/10"

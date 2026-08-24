@@ -24,14 +24,14 @@ class SplineErrorBoundary extends Component {
 }
 
 export default function App() {
-  const { settings, checkStreak, initAuth } = useStore();
+  const { settings, checkStreak, initSync } = useStore();
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const isPinActive = settings?.isPinEnabled !== false;
 
   useEffect(() => {
     checkStreak();
-    initAuth();
+    initSync();
   }, []);
 
   return (

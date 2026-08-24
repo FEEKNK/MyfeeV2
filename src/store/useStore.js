@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { flashcardsData } from '../data/vocabulary';
 import { initialUserData } from '../data/seedData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchCloudUserData, saveCloudUserData } from '../services/supabaseSync';
+import { fetchCloudUserData, saveCloudUserData, subscribeToCloudChanges } from '../services/supabaseSync';
 
 const DEFAULT_EXPENSE_CATEGORIES = ['อาหาร', 'เดินทาง', 'ช้อปปิ้ง', 'ความบันเทิง', 'สุขภาพ', 'บิล', 'อื่นๆ'];
 const DEFAULT_INCOME_CATEGORIES = ['เงินเดือน/รายได้', 'ฟรีแลนซ์', 'ลงทุน', 'อื่นๆ'];
@@ -76,94 +76,109 @@ const DEFAULT_FEATURE_ORDER = [
   'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
 ];
 
+const applyCloudDataToStore = (set, cloudData) => {
+  if (!cloudData) return;
+  const learnedCards = Array.isArray(cloudData.learnedCards) ? cloudData.learnedCards : [];
+  const favCards = Array.isArray(cloudData.favCards) ? cloudData.favCards : [];
+  const todos = Array.isArray(cloudData.todos) ? cloudData.todos : [];
+  const habits = Array.isArray(cloudData.habits) ? cloudData.habits : [];
+  const finance = Array.isArray(cloudData.finance) ? cloudData.finance : [];
+  const expenseCategories = Array.isArray(cloudData.expenseCategories) ? cloudData.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
+  const incomeCategories = Array.isArray(cloudData.incomeCategories) ? cloudData.incomeCategories : DEFAULT_INCOME_CATEGORIES;
+  const goals = Array.isArray(cloudData.goals) ? cloudData.goals : [];
+  const notes = Array.isArray(cloudData.notes) ? cloudData.notes : [];
+  const projects = Array.isArray(cloudData.projects) ? cloudData.projects : [];
+  const countdowns = Array.isArray(cloudData.countdowns) ? cloudData.countdowns : [];
+  const settings = cloudData.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 };
+  const streak = cloudData.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 };
+  const codeReadingProgress = cloudData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 };
+  const homeFeatureOrder = Array.isArray(cloudData.homeFeatureOrder) ? cloudData.homeFeatureOrder : DEFAULT_FEATURE_ORDER;
+
+  saveToStorage('learnedCards', learnedCards);
+  saveToStorage('favCards', favCards);
+  saveToStorage('todoData', todos);
+  saveToStorage('habitData', habits);
+  saveToStorage('financeData', finance);
+  saveToStorage('expenseCategories', expenseCategories);
+  saveToStorage('incomeCategories', incomeCategories);
+  saveToStorage('goalsData', goals);
+  saveToStorage('notesData', notes);
+  saveToStorage('projectsData', projects);
+  saveToStorage('countdownData', countdowns);
+  saveToStorage('appSettings', settings);
+  saveToStorage('streakData', streak);
+  saveToStorage('myfee_cr_progress', codeReadingProgress);
+  saveToStorage('homeFeatureOrder', homeFeatureOrder);
+
+  set({
+    learnedCards,
+    favCards,
+    todos,
+    habits,
+    finance,
+    expenseCategories,
+    incomeCategories,
+    goals,
+    notes,
+    projects,
+    countdowns,
+    settings,
+    streak,
+    codeReadingProgress,
+    homeFeatureOrder,
+    lastSyncedAt: new Date().toISOString(),
+    cloudSyncError: null,
+  });
+};
+
 let syncTimeout = null;
 const debounceSyncToCloud = (get) => {
   const state = get();
-  if (!state.user || !isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured()) return;
 
   if (syncTimeout) clearTimeout(syncTimeout);
   syncTimeout = setTimeout(() => {
     state.pushStateToCloud();
-  }, 2000);
+  }, 600);
 };
 
 const useStore = create((set, get) => ({
-  // ── Supabase Auth & Cloud Sync ──────────────────────────────
-  user: null,
+  // ── Supabase Cloud Sync (Single-User Mode / No Login) ─────────
   isSyncing: false,
   lastSyncedAt: null,
+  cloudSyncError: null,
+  isCloudConnected: isSupabaseConfigured(),
 
-  setUser: (user) => set({ user }),
-
-  initAuth: async () => {
+  initSync: async () => {
     if (!isSupabaseConfigured() || !supabase) return;
-    try {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        set({ user: data.user });
-        get().syncCloudData();
-      }
+    
+    // 1. Initial fetch from cloud
+    await get().syncCloudData();
 
-      supabase.auth.onAuthStateChange((event, session) => {
-        const currentUser = session?.user || null;
-        set({ user: currentUser });
-        if (currentUser) {
-          get().syncCloudData();
-        }
-      });
-    } catch (err) {
-      console.error('Supabase init error:', err);
-    }
+    // 2. Subscribe to realtime updates from phone/other devices
+    subscribeToCloudChanges((incomingData) => {
+      applyCloudDataToStore(set, incomingData);
+    });
   },
 
   syncCloudData: async () => {
-    const user = get().user;
-    if (!user || !isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
 
-    set({ isSyncing: true });
+    set({ isSyncing: true, cloudSyncError: null });
     try {
-      const { data: cloudData, error } = await fetchCloudUserData(user.id);
+      const { data: cloudData, error } = await fetchCloudUserData();
       if (error) {
         console.error('Fetch cloud data error:', error);
-      } else if (cloudData && Object.keys(cloudData).length > 0) {
-        // Apply cloud data to local state
-        set({
-          learnedCards: cloudData.learnedCards || [],
-          favCards: cloudData.favCards || [],
-          todos: cloudData.todos || [],
-          habits: cloudData.habits || DEFAULT_HABITS,
-          finance: cloudData.finance || initialUserData.financeData,
-          expenseCategories: cloudData.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
-          incomeCategories: cloudData.incomeCategories || DEFAULT_INCOME_CATEGORIES,
-          goals: cloudData.goals || [],
-          notes: cloudData.notes || [],
-          projects: cloudData.projects || initialUserData.projectsData,
-          countdowns: cloudData.countdowns || initialUserData.countdownData,
-          settings: cloudData.settings || get().settings,
-          streak: cloudData.streak || get().streak,
-          codeReadingProgress: cloudData.codeReadingProgress || get().codeReadingProgress,
-          lastSyncedAt: new Date().toISOString(),
-        });
-
-        // Also save to localStorage for offline persistence
-        saveToStorage('learnedCards', cloudData.learnedCards || []);
-        saveToStorage('favCards', cloudData.favCards || []);
-        saveToStorage('todoData', cloudData.todos || []);
-        saveToStorage('habitData', cloudData.habits || DEFAULT_HABITS);
-        saveToStorage('financeData', cloudData.finance || initialUserData.financeData);
-        saveToStorage('expenseCategories', cloudData.expenseCategories || DEFAULT_EXPENSE_CATEGORIES);
-        saveToStorage('incomeCategories', cloudData.incomeCategories || DEFAULT_INCOME_CATEGORIES);
-        saveToStorage('goalsData', cloudData.goals || []);
-        saveToStorage('notesData', cloudData.notes || []);
-        saveToStorage('projectsData', cloudData.projects || initialUserData.projectsData);
-        saveToStorage('countdownData', cloudData.countdowns || initialUserData.countdownData);
-        saveToStorage('appSettings', cloudData.settings || get().settings);
-        saveToStorage('streakData', cloudData.streak || get().streak);
-        saveToStorage('myfee_cr_progress', cloudData.codeReadingProgress || get().codeReadingProgress);
+        set({ cloudSyncError: error.message });
+      } else if (cloudData) {
+        applyCloudDataToStore(set, cloudData);
       } else {
-        // First time user, push local data to cloud
+        // First time initialization on Supabase
         await get().pushStateToCloud();
       }
+    } catch (err) {
+      console.error('Sync cloud data exception:', err);
+      set({ cloudSyncError: err.message });
     } finally {
       set({ isSyncing: false });
     }
@@ -171,14 +186,20 @@ const useStore = create((set, get) => ({
 
   pushStateToCloud: async () => {
     const state = get();
-    if (!state.user || !isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
 
     set({ isSyncing: true });
     try {
-      await saveCloudUserData(state.user.id, state, state.user.email);
-      set({ lastSyncedAt: new Date().toISOString() });
+      const { success, error } = await saveCloudUserData(state);
+      if (success) {
+        set({ lastSyncedAt: new Date().toISOString(), cloudSyncError: null });
+      } else if (error) {
+        console.error('Push to cloud error:', error);
+        set({ cloudSyncError: error.message });
+      }
     } catch (err) {
-      console.error('Push to cloud error:', err);
+      console.error('Push to cloud exception:', err);
+      set({ cloudSyncError: err.message });
     } finally {
       set({ isSyncing: false });
     }
