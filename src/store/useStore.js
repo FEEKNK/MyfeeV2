@@ -171,7 +171,27 @@ const useStore = create((set, get) => ({
         console.error('Fetch cloud data error:', error);
         set({ cloudSyncError: error.message });
       } else if (cloudData) {
-        applyCloudDataToStore(set, cloudData);
+        const state = get();
+        const isCloudEmpty = 
+          (!cloudData.learnedCards || cloudData.learnedCards.length === 0) &&
+          (!cloudData.habits || cloudData.habits.length === 0) &&
+          (!cloudData.todos || cloudData.todos.length === 0) &&
+          (!cloudData.finance || cloudData.finance.length === 0) &&
+          (!cloudData.notes || cloudData.notes.length === 0);
+
+        const hasLocalData = 
+          (state.learnedCards && state.learnedCards.length > 0) ||
+          (state.habits && state.habits.length > 0) ||
+          (state.todos && state.todos.length > 0) ||
+          (state.finance && state.finance.length > 0) ||
+          (state.notes && state.notes.length > 0);
+
+        if (isCloudEmpty && hasLocalData) {
+          // Cloud is newly initialized with empty data, preserve local data and push to cloud
+          await state.pushStateToCloud();
+        } else {
+          applyCloudDataToStore(set, cloudData);
+        }
       } else {
         // First time initialization on Supabase
         await get().pushStateToCloud();
