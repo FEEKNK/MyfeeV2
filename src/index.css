@@ -202,3 +202,12 @@ body {
   background-color: #ffffff !important;
   color: #0f172a !important;
 }
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+.light-theme input[type="date"] {
+  color-scheme: light;
+}
+

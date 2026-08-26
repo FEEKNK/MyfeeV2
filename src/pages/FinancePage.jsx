@@ -3,28 +3,50 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
 import {
   ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Check, X, Calendar, Folder, Wallet,
-  PieChart as PieChartIcon, BarChart3, Pencil, Repeat, Settings2
+  PieChart as PieChartIcon, BarChart3, Pencil, Repeat, Settings2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const FULL_THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 const COLORS = ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9'];
+
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getYesterdayStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function FinancePage() {
   const navigate = useNavigate();
   const {
     finance, expenseCategories, incomeCategories,
     addCategory, deleteCategory, addTransaction, deleteTransaction, editTransaction,
-    recurringTransactions, processRecurringTransactions, addRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction,
-    settings
+    recurringTransactions, processRecurringTransactions, addRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction
   } = useStore();
 
+  const now = new Date();
   const [viewFilter, setViewFilter] = useState('thisMonth'); // 'thisMonth' | 'all' | 'charts' | 'recurring'
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState('expense');
   const [category, setCategory] = useState(expenseCategories[0] || 'อาหาร');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(getTodayStr());
   
   // Category management state
   const [isManagingCategories, setIsManagingCategories] = useState(false);
@@ -34,9 +56,11 @@ export default function FinancePage() {
   // Editing & Deleting states
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [editType, setEditType] = useState('expense');
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editDate, setEditDate] = useState(getTodayStr());
 
   // Recurring form
   const [showRecurringForm, setShowRecurringForm] = useState(false);
@@ -52,26 +76,76 @@ export default function FinancePage() {
   }, [processRecurringTransactions]);
 
   const currentCategories = type === 'expense' ? expenseCategories : incomeCategories;
-  const now = new Date();
+
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    if (selectedMonth === 0) {
+      setSelectedMonth(11);
+      setSelectedYear(prev => prev - 1);
+    } else {
+      setSelectedMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 11) {
+      setSelectedMonth(0);
+      setSelectedYear(prev => prev + 1);
+    } else {
+      setSelectedMonth(prev => prev + 1);
+    }
+  };
+
+  const handleResetToCurrentMonth = () => {
+    const cur = new Date();
+    setSelectedMonth(cur.getMonth());
+    setSelectedYear(cur.getFullYear());
+  };
+
+  const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
 
   // Filter lists
-  const thisMonthList = finance.filter(t => {
+  const monthList = finance.filter(t => {
     const d = new Date(t.date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
   });
-  const displayedList = viewFilter === 'thisMonth' ? thisMonthList : finance;
 
-  // Summaries
-  const income = thisMonthList.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = thisMonthList.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const displayedList = viewFilter === 'thisMonth' ? monthList : finance;
+
+  // Summaries for selected month
+  const income = monthList.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = monthList.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const balance = income - expense;
+
+  const formatTxDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const todayStr = getTodayStr();
+    const yesterdayStr = getYesterdayStr();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const txDateOnly = `${y}-${m}-${day}`;
+    
+    const thaiYear = y + 543;
+    if (txDateOnly === todayStr) {
+      return `วันนี้ (${d.getDate()} ${THAI_MONTHS[d.getMonth()]})`;
+    }
+    if (txDateOnly === yesterdayStr) {
+      return `เมื่อวาน (${d.getDate()} ${THAI_MONTHS[d.getMonth()]})`;
+    }
+    return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${thaiYear}`;
+  };
 
   const handleAdd = (e) => {
     e.preventDefault();
     const num = parseFloat(amount);
     if (!amount || isNaN(num) || num <= 0) return;
-    addTransaction(type, category, amount, note, null);
-    setAmount(''); setNote(''); setShowForm(false);
+    addTransaction(type, category, amount, note, date || getTodayStr());
+    setAmount('');
+    setNote('');
+    setDate(getTodayStr());
+    setShowForm(false);
   };
 
   const handleCreateCategory = (e) => {
@@ -105,14 +179,28 @@ export default function FinancePage() {
   };
 
   const startEdit = (tx) => {
+    const d = new Date(tx.date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
     setEditingId(tx.id);
+    setEditType(tx.type || 'expense');
     setEditAmount(tx.amount.toString());
-    setEditNote(tx.note);
-    setEditCategory(tx.category);
+    setEditNote(tx.note || '');
+    setEditCategory(tx.category || '');
+    setEditDate(`${y}-${m}-${day}`);
   };
 
   const saveEdit = () => {
-    editTransaction(editingId, { amount: editAmount, note: editNote, category: editCategory });
+    const num = parseFloat(editAmount);
+    if (!editAmount || isNaN(num) || num <= 0) return;
+    editTransaction(editingId, {
+      type: editType,
+      amount: editAmount,
+      note: editNote,
+      category: editCategory,
+      date: editDate
+    });
     setEditingId(null);
   };
 
@@ -129,7 +217,7 @@ export default function FinancePage() {
 
   // ── Chart Data Calculation ───────────────────────────
   const getDonutData = () => {
-    const expenses = thisMonthList.filter(t => t.type === 'expense');
+    const expenses = monthList.filter(t => t.type === 'expense');
     if (expenses.length === 0) return [];
     
     const sums = {};
@@ -139,7 +227,7 @@ export default function FinancePage() {
       .sort((a, b) => b[1] - a[1])
       .map(([cat, val], i) => ({ 
         cat, val, 
-        pct: (val / expense) * 100, 
+        pct: (val / (expense || 1)) * 100, 
         color: COLORS[i % COLORS.length] 
       }));
   };
@@ -151,9 +239,14 @@ export default function FinancePage() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const ds = d.toISOString().split('T')[0];
+      const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const sum = finance
-        .filter(t => t.type === 'expense' && t.date.startsWith(ds))
+        .filter(t => {
+          if (t.type !== 'expense') return false;
+          const td = new Date(t.date);
+          const tds = `${td.getFullYear()}-${String(td.getMonth() + 1).padStart(2, '0')}-${String(td.getDate()).padStart(2, '0')}`;
+          return tds === ds;
+        })
         .reduce((s, t) => s + t.amount, 0);
       maxVal = Math.max(maxVal, sum);
       days.push({ day: d.getDate(), month: THAI_MONTHS[d.getMonth()], sum });
@@ -163,7 +256,7 @@ export default function FinancePage() {
 
   const renderDonutChart = () => {
     const data = getDonutData();
-    if (data.length === 0) return <div className="text-gray-500 text-sm text-center py-8">ไม่มีข้อมูลรายจ่ายเดือนนี้</div>;
+    if (data.length === 0) return <div className="text-gray-500 text-sm text-center py-8">ไม่มีข้อมูลรายจ่ายประจำเดือนนี้</div>;
 
     let cumulativePct = 0;
     return (
@@ -236,6 +329,56 @@ export default function FinancePage() {
         </motion.button>
       </div>
 
+      {/* Filter Tabs */}
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        {[
+          { id: 'thisMonth', icon: Calendar, label: 'รายเดือน' },
+          { id: 'all', icon: Folder, label: 'ทั้งหมด' },
+          { id: 'charts', icon: PieChartIcon, label: 'กราฟ' },
+          { id: 'recurring', icon: Repeat, label: 'ประจำ' }
+        ].map(t => (
+          <button key={t.id} onClick={() => setViewFilter(t.id)}
+            className={`flex-none px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
+              viewFilter === t.id ? 'bg-pink-500/20 border-pink-500/30 text-pink-400' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'
+            }`}>
+            <t.icon className="w-3.5 h-3.5" /> <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Month Navigation for Month View */}
+      {viewFilter === 'thisMonth' && (
+        <div className="flex items-center justify-between px-3 py-2 glass-dark rounded-2xl border border-white/10">
+          <button
+            onClick={handlePrevMonth}
+            className="p-1.5 rounded-xl hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+            title="เดือนก่อนหน้า"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-white dark-invert text-sm">
+              {FULL_THAI_MONTHS[selectedMonth]} {selectedYear + 543}
+            </span>
+            {!isCurrentMonth && (
+              <button
+                onClick={handleResetToCurrentMonth}
+                className="text-[10px] font-bold bg-pink-500/20 text-pink-400 px-2 py-0.5 rounded-lg border border-pink-500/30 hover:bg-pink-500/30 transition-colors"
+              >
+                เดือนปัจจุบัน
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleNextMonth}
+            className="p-1.5 rounded-xl hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+            title="เดือนถัดไป"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       {(viewFilter === 'thisMonth' || viewFilter === 'charts') && (
         <div className="grid grid-cols-3 gap-2">
@@ -252,41 +395,59 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* Filter Tabs */}
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {[
-          { id: 'thisMonth', icon: Calendar, label: 'เดือนนี้' },
-          { id: 'all', icon: Folder, label: 'ทั้งหมด' },
-          { id: 'charts', icon: PieChartIcon, label: 'กราฟ' },
-          { id: 'recurring', icon: Repeat, label: 'ประจำ' }
-        ].map(t => (
-          <button key={t.id} onClick={() => setViewFilter(t.id)}
-            className={`flex-none px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 ${
-              viewFilter === t.id ? 'bg-pink-500/20 border-pink-500/30 text-pink-400' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'
-            }`}>
-            <t.icon className="w-3.5 h-3.5" /> <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Add Form */}
       <AnimatePresence>
         {showForm && (
           <motion.form onSubmit={handleAdd} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden glass-dark rounded-2xl border border-white/10 p-4 flex flex-col gap-3">
             <div className="flex gap-2">
-              <button type="button" onClick={() => { setType('expense'); setCategory(expenseCategories[0]); }}
+              <button type="button" onClick={() => { setType('expense'); setCategory(expenseCategories[0] || 'อาหาร'); }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex justify-center items-center gap-1.5 ${
                   type === 'expense' ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-white/5 border-white/10 text-gray-400'
                 }`}>
                 <TrendingDown className="w-4 h-4" /> รายจ่าย
               </button>
-              <button type="button" onClick={() => { setType('income'); setCategory(incomeCategories[0]); }}
+              <button type="button" onClick={() => { setType('income'); setCategory(incomeCategories[0] || 'เงินเดือน/รายได้'); }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors flex justify-center items-center gap-1.5 ${
                   type === 'income' ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-white/5 border-white/10 text-gray-400'
                 }`}>
                 <TrendingUp className="w-4 h-4" /> รายรับ
               </button>
+            </div>
+
+            {/* Date Picker with Quick Selectors */}
+            <div className="flex flex-col gap-1.5 bg-white/5 border border-white/10 rounded-xl p-2.5">
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span className="font-bold flex items-center gap-1.5 text-white dark-invert">
+                  <Calendar className="w-3.5 h-3.5 text-pink-400" /> วันที่ทำรายการ
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDate(getTodayStr())}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-colors ${
+                      date === getTodayStr() ? 'bg-pink-500/30 text-pink-300 border border-pink-500/40' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+                    }`}
+                  >
+                    วันนี้
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDate(getYesterdayStr())}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-colors ${
+                      date === getYesterdayStr() ? 'bg-pink-500/30 text-pink-300 border border-pink-500/40' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+                    }`}
+                  >
+                    เมื่อวาน
+                  </button>
+                </div>
+              </div>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white dark-invert text-sm outline-none focus:border-pink-500/50"
+              />
             </div>
             
             <div className="flex justify-between items-center px-1">
@@ -350,7 +511,9 @@ export default function FinancePage() {
         {viewFilter === 'charts' && (
           <div className="space-y-4">
             <div className="glass-dark border border-white/10 rounded-2xl p-4">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><PieChartIcon className="w-3.5 h-3.5"/> สัดส่วนรายจ่าย</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <PieChartIcon className="w-3.5 h-3.5"/> สัดส่วนรายจ่าย ({FULL_THAI_MONTHS[selectedMonth]} {selectedYear + 543})
+              </h3>
               {renderDonutChart()}
             </div>
             <div className="glass-dark border border-white/10 rounded-2xl p-4">
@@ -420,25 +583,74 @@ export default function FinancePage() {
             {displayedList.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16 text-gray-500">
                 <Wallet className="w-12 h-12 text-pink-400/40 mx-auto mb-3" />
-                <p className="text-sm">ยังไม่มีรายการ</p>
+                <p className="text-sm">ยังไม่มีรายการในเดือนนี้</p>
               </motion.div>
             ) : (
               displayedList.map((tx) => {
-                const d = new Date(tx.date);
                 const isEditing = editingId === tx.id;
                 return (
                   <motion.div key={tx.id} layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}
                     className="flex flex-col p-3.5 glass-dark rounded-2xl border border-white/10 group gap-2"
                   >
                     {isEditing ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex gap-2">
-                          <input value={editAmount} onChange={e => setEditAmount(e.target.value)} type="number" className="w-24 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white dark-invert text-sm outline-none" />
-                          <input value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="หมายเหตุ" className="flex-1 bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white dark-invert text-sm outline-none" />
+                      <div className="flex flex-col gap-2 p-1">
+                        <div className="flex gap-2 items-center">
+                          <select
+                            value={editType}
+                            onChange={(e) => {
+                              const newT = e.target.value;
+                              setEditType(newT);
+                              const cats = newT === 'expense' ? expenseCategories : incomeCategories;
+                              if (!cats.includes(editCategory)) {
+                                setEditCategory(cats[0] || 'ทั่วไป');
+                              }
+                            }}
+                            className="bg-white/10 border border-white/20 rounded-xl px-2.5 py-1.5 text-white dark-invert text-xs outline-none"
+                          >
+                            <option value="expense" className="text-black">รายจ่าย</option>
+                            <option value="income" className="text-black">รายรับ</option>
+                          </select>
+                          <select
+                            value={editCategory}
+                            onChange={(e) => setEditCategory(e.target.value)}
+                            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-2.5 py-1.5 text-white dark-invert text-xs outline-none"
+                          >
+                            {(editType === 'expense' ? expenseCategories : incomeCategories).map(c => (
+                              <option key={c} value={c} className="text-black">{c}</option>
+                            ))}
+                          </select>
                         </div>
-                        <div className="flex justify-end gap-2">
-                          <button onClick={saveEdit} className="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-bold">บันทึก</button>
-                          <button onClick={() => setEditingId(null)} className="px-3 py-1 bg-gray-500/20 text-gray-400 rounded-lg text-xs font-bold">ยกเลิก</button>
+
+                        <div className="flex gap-2">
+                          <input
+                            type="date"
+                            value={editDate}
+                            onChange={e => setEditDate(e.target.value)}
+                            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-2.5 py-1.5 text-white dark-invert text-xs outline-none"
+                          />
+                          <input
+                            value={editAmount}
+                            onChange={e => setEditAmount(e.target.value)}
+                            type="number"
+                            placeholder="จำนวนเงิน"
+                            className="w-28 bg-white/10 border border-white/20 rounded-xl px-2.5 py-1.5 text-white dark-invert text-xs outline-none"
+                          />
+                        </div>
+
+                        <input
+                          value={editNote}
+                          onChange={e => setEditNote(e.target.value)}
+                          placeholder="หมายเหตุ"
+                          className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-1.5 text-white dark-invert text-xs outline-none"
+                        />
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button onClick={saveEdit} className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors">
+                            บันทึก
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="px-3 py-1.5 bg-gray-500/20 text-gray-400 rounded-xl text-xs font-bold border border-white/10 hover:bg-white/10 transition-colors">
+                            ยกเลิก
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -449,7 +661,7 @@ export default function FinancePage() {
                         <div className="flex-1 min-w-0">
                           <div className="font-bold text-white dark-invert text-sm truncate">{tx.category}</div>
                           <div className="text-xs text-gray-400 flex items-center gap-1.5">
-                            <span>{d.getDate()} {THAI_MONTHS[d.getMonth()]}</span>
+                            <span>{formatTxDate(tx.date)}</span>
                             {tx.note && <span className="text-gray-500 truncate">· {tx.note}</span>}
                           </div>
                         </div>

@@ -422,11 +422,24 @@ const useStore = create((set, get) => ({
     set((state) => {
       const num = parseFloat(amount);
       if (isNaN(num) || num <= 0) return {};
+      let finalDate;
+      if (dateStr) {
+        if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          const now = new Date();
+          finalDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString();
+        } else {
+          finalDate = new Date(dateStr).toISOString();
+        }
+      } else {
+        finalDate = new Date().toISOString();
+      }
+
       const tx = {
         id: Date.now(),
         type, category: category || 'ทั่วไป',
         amount: num, note: note || '',
-        date: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
+        date: finalDate
       };
       const next = [tx, ...state.finance].sort((a, b) => new Date(b.date) - new Date(a.date));
       saveToStorage('financeData', next);
@@ -439,14 +452,25 @@ const useStore = create((set, get) => ({
     set((state) => {
       const next = state.finance.map(t => {
         if (t.id !== id) return t;
+        let newDate = t.date;
+        if (updates.date !== undefined && updates.date) {
+          if (typeof updates.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(updates.date)) {
+            const [y, m, d] = updates.date.split('-').map(Number);
+            const orig = new Date(t.date);
+            newDate = new Date(y, m - 1, d, orig.getHours() || 12, orig.getMinutes() || 0, orig.getSeconds() || 0).toISOString();
+          } else {
+            newDate = new Date(updates.date).toISOString();
+          }
+        }
         return {
           ...t,
           ...(updates.amount !== undefined ? { amount: parseFloat(updates.amount) || t.amount } : {}),
           ...(updates.category !== undefined ? { category: updates.category } : {}),
           ...(updates.note !== undefined ? { note: updates.note } : {}),
           ...(updates.type !== undefined ? { type: updates.type } : {}),
+          date: newDate,
         };
-      });
+      }).sort((a, b) => new Date(b.date) - new Date(a.date));
       saveToStorage('financeData', next);
       return { finance: next };
     });
