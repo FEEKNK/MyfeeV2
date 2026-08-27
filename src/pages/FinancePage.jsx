@@ -313,7 +313,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col min-h-full gap-4 pb-12">
       {/* Header */}
       <div className="flex items-center justify-between">
         <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate('/')} className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert">
@@ -507,7 +507,7 @@ export default function FinancePage() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
+      <div className="flex-1 space-y-2 pr-0.5">
         {viewFilter === 'charts' && (
           <div className="space-y-4">
             <div className="glass-dark border border-white/10 rounded-2xl p-4">
