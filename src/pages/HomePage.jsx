@@ -95,7 +95,6 @@ export default function HomePage() {
     { id: 'goals', title: "เป้าหมายออม", getDesc: () => `${goals.length} เป้าหมาย`, icon: Target, color: "bg-violet-500", to: "/goals", getBadge: () => goals.length },
     { id: 'notes', title: "โน้ต & ไดอารี่", getDesc: () => `${notes.length} รายการ`, icon: FileText, color: "bg-amber-500", to: "/notes", getBadge: () => notes.length },
     { id: 'projects', title: "Projects", getDesc: () => `${projects.length} โปรเจกต์`, icon: Rocket, color: "bg-indigo-500", to: "/projects", getBadge: () => projects.length },
-    { id: 'pomodoro', title: "Pomodoro", desc: "จับเวลาโฟกัส", icon: Timer, color: "bg-red-500", to: "/pomodoro" },
     { id: 'countdown', title: "Countdown", getDesc: () => `${countdowns.length} กำหนดการ`, icon: Hourglass, color: "bg-purple-500", to: "/countdown", getBadge: () => countdowns.length },
     { id: 'breathing', title: "ฝึกหายใจ", desc: "Wim Hof 3 รอบ", icon: Wind, color: "bg-teal-500", to: "/breathing" },
     { id: 'quiz', title: "ทดสอบศัพท์", desc: "Quiz 3 รูปแบบ", icon: HelpCircle, color: "bg-fuchsia-500", to: "/quiz" },
@@ -137,7 +136,7 @@ export default function HomePage() {
             <span>เมนูหลัก</span>
           </h2>
           <span className="text-[10px] text-gray-400 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">
-            13 ฟังก์ชัน
+            12 ฟังก์ชัน
           </span>
         </div>
 

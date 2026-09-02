@@ -26,7 +26,7 @@ export default function FlashcardPage() {
 
   function pickRandom(vocab, learned, currentId = null) {
     if (!vocab || vocab.length === 0) return null;
-    let pool = vocab.filter(c => !learned.includes(c.id));
+    let pool = vocab.filter(c => showLearned ? learned.includes(c.id) : !learned.includes(c.id));
     if (pool.length === 0) pool = vocab;
 
     // Avoid picking the exact same card again if possible
@@ -38,7 +38,7 @@ export default function FlashcardPage() {
 
   useEffect(() => {
     setCurrentCard(pickRandom(filteredVocab, learnedCards));
-  }, [flashcardFilter, vocabulary]);
+  }, [flashcardFilter, vocabulary, showLearned]);
 
   const next = () => {
     setIsFlipped(false);

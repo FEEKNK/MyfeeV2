@@ -9,7 +9,6 @@ import HabitPage from '../pages/HabitPage';
 import FinancePage from '../pages/FinancePage';
 import GoalsPage from '../pages/GoalsPage';
 import NotesPage from '../pages/NotesPage';
-import PomodoroPage from '../pages/PomodoroPage';
 import ProjectsPage from '../pages/ProjectsPage';
 import CountdownPage from '../pages/CountdownPage';
 import BreathingPage from '../pages/BreathingPage';
@@ -50,7 +49,6 @@ export default function AppRouter() {
               <Route path="/finance" element={<FinancePage />} />
               <Route path="/goals" element={<GoalsPage />} />
               <Route path="/notes" element={<NotesPage />} />
-              <Route path="/pomodoro" element={<PomodoroPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/countdown" element={<CountdownPage />} />
               <Route path="/breathing" element={<BreathingPage />} />
