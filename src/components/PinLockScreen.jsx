@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Delete, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { Lock, Delete, AlertCircle } from 'lucide-react';
 import useStore from '../store/useStore';
 
 export default function PinLockScreen({ onUnlock }) {
@@ -11,39 +11,54 @@ export default function PinLockScreen({ onUnlock }) {
   const [shakeKey, setShakeKey] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const handleDigit = (digit) => {
-    if (enteredPin.length < 4 && !isVerifying) {
-      const nextPin = enteredPin + digit;
-      setEnteredPin(nextPin);
-      setIsError(false);
+  const [failedAttempts, setFailedAttempts] = useState(() => {
+    return parseInt(localStorage.getItem('myfee_pin_attempts') || '0', 10);
+  });
+  const [lockoutTimer, setLockoutTimer] = useState(() => {
+    const lockUntil = parseInt(localStorage.getItem('myfee_pin_lock_until') || '0', 10);
+    const now = Date.now();
+    return lockUntil > now ? Math.ceil((lockUntil - now) / 1000) : 0;
+  });
 
-      if (nextPin.length === 4) {
-        checkPin(nextPin);
-      }
+  useEffect(() => {
+    if (lockoutTimer > 0) {
+      const timer = setInterval(() => {
+        setLockoutTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setFailedAttempts(0);
+            localStorage.setItem('myfee_pin_attempts', '0');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
     }
-  };
+  }, [lockoutTimer]);
 
-  const handleDelete = () => {
-    if (enteredPin.length > 0) {
-      setEnteredPin(prev => prev.slice(0, -1));
-      setIsError(false);
-    }
-  };
-
-  const handleClear = () => {
-    setEnteredPin('');
-    setIsError(false);
-  };
-
-  const checkPin = async (pin) => {
+  const checkPin = useCallback(async (pin) => {
     setIsVerifying(true);
     try {
       const isValid = await storeVerifyPin(pin);
       if (isValid) {
+        setFailedAttempts(0);
+        localStorage.removeItem('myfee_pin_attempts');
+        localStorage.removeItem('myfee_pin_lock_until');
         setTimeout(() => {
           onUnlock();
         }, 150);
       } else {
+        const newAttempts = failedAttempts + 1;
+        setFailedAttempts(newAttempts);
+        localStorage.setItem('myfee_pin_attempts', newAttempts.toString());
+        
+        if (newAttempts >= 5) {
+          const lockUntil = Date.now() + 30000; // 30 seconds
+          localStorage.setItem('myfee_pin_lock_until', lockUntil.toString());
+          setLockoutTimer(30);
+        }
+
         setTimeout(() => {
           setIsError(true);
           setShakeKey(prev => prev + 1);
@@ -57,7 +72,30 @@ export default function PinLockScreen({ onUnlock }) {
       setEnteredPin('');
       setIsVerifying(false);
     }
-  };
+  }, [storeVerifyPin, onUnlock, failedAttempts]);
+
+  const handleDigit = useCallback((digit) => {
+    if (isVerifying || lockoutTimer > 0) return;
+    setEnteredPin(prev => {
+      if (prev.length >= 4) return prev;
+      const nextPin = prev + digit;
+      setIsError(false);
+      if (nextPin.length === 4) {
+        checkPin(nextPin);
+      }
+      return nextPin;
+    });
+  }, [isVerifying, checkPin, lockoutTimer]);
+
+  const handleDelete = useCallback(() => {
+    setEnteredPin(prev => prev.slice(0, -1));
+    setIsError(false);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setEnteredPin('');
+    setIsError(false);
+  }, []);
 
   // Keyboard support
   useEffect(() => {
@@ -73,7 +111,7 @@ export default function PinLockScreen({ onUnlock }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enteredPin]);
+  }, [handleDigit, handleDelete, handleClear]);
 
   const KEYPAD_NUMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
@@ -138,7 +176,18 @@ export default function PinLockScreen({ onUnlock }) {
         {/* Error message / Hint */}
         <div className="h-6 flex items-center justify-center mb-6">
           <AnimatePresence mode="wait">
-            {isError ? (
+            {lockoutTimer > 0 ? (
+              <motion.div
+                key="locked"
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-1.5 text-xs text-orange-500 font-bold"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>ถูกระงับชั่วคราว กรุณารอ {lockoutTimer} วินาที</span>
+              </motion.div>
+            ) : isError ? (
               <motion.div
                 key="error"
                 initial={{ opacity: 0, y: -5 }}
@@ -167,10 +216,13 @@ export default function PinLockScreen({ onUnlock }) {
           {KEYPAD_NUMS.map((num) => (
             <motion.button
               key={num}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.9 }}
+              disabled={lockoutTimer > 0}
+              whileHover={lockoutTimer > 0 ? {} : { scale: 1.05 }}
+              whileTap={lockoutTimer > 0 ? {} : { scale: 0.9 }}
               onClick={() => handleDigit(num)}
-              className="h-16 rounded-2xl bg-white/60 backdrop-blur-lg border border-white/80 flex items-center justify-center text-xl font-black text-gray-800 shadow-sm hover:bg-white/80 active:bg-white/40 transition-colors"
+              className={`h-16 rounded-2xl backdrop-blur-lg border flex items-center justify-center text-xl font-black text-gray-800 shadow-sm transition-colors ${
+                lockoutTimer > 0 ? 'bg-white/30 border-white/40 opacity-50 cursor-not-allowed' : 'bg-white/60 border-white/80 hover:bg-white/80 active:bg-white/40'
+              }`}
             >
               {num}
             </motion.button>
@@ -188,20 +240,26 @@ export default function PinLockScreen({ onUnlock }) {
 
           {/* Zero Button */}
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.9 }}
+            disabled={lockoutTimer > 0}
+            whileHover={lockoutTimer > 0 ? {} : { scale: 1.05 }}
+            whileTap={lockoutTimer > 0 ? {} : { scale: 0.9 }}
             onClick={() => handleDigit('0')}
-            className="h-16 rounded-2xl bg-white/60 backdrop-blur-lg border border-white/80 flex items-center justify-center text-xl font-black text-gray-800 shadow-sm hover:bg-white/80 active:bg-white/40 transition-colors"
+            className={`h-16 rounded-2xl backdrop-blur-lg border flex items-center justify-center text-xl font-black text-gray-800 shadow-sm transition-colors ${
+              lockoutTimer > 0 ? 'bg-white/30 border-white/40 opacity-50 cursor-not-allowed' : 'bg-white/60 border-white/80 hover:bg-white/80 active:bg-white/40'
+            }`}
           >
             0
           </motion.button>
 
           {/* Backspace Button */}
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.9 }}
+            disabled={lockoutTimer > 0}
+            whileHover={lockoutTimer > 0 ? {} : { scale: 1.05 }}
+            whileTap={lockoutTimer > 0 ? {} : { scale: 0.9 }}
             onClick={handleDelete}
-            className="h-16 rounded-2xl bg-white/40 border border-white/60 flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-white/20 transition-colors"
+            className={`h-16 rounded-2xl border flex items-center justify-center text-gray-600 transition-colors ${
+              lockoutTimer > 0 ? 'bg-white/20 border-white/30 opacity-50 cursor-not-allowed' : 'bg-white/40 border-white/60 hover:bg-gray-100 active:bg-white/20'
+            }`}
           >
             <Delete className="w-5 h-5" />
           </motion.button>

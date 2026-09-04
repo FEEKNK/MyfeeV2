@@ -7,7 +7,16 @@ const DEFAULT_FEATURE_ORDER = [
   'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
 ];
 
-export const SINGLE_USER_ID = 'single_user';
+export const getClientSyncId = () => {
+  let id = localStorage.getItem('myfee_client_sync_id');
+  if (!id) {
+    id = 'user_' + crypto.randomUUID();
+    localStorage.setItem('myfee_client_sync_id', id);
+  }
+  return id;
+};
+
+export const SINGLE_USER_ID = getClientSyncId();
 
 /**
  * Helper to parse raw database record into store shape
@@ -32,6 +41,9 @@ export const parseCloudData = (data) => {
     finance: Array.isArray(data.finance) ? data.finance : [],
     expenseCategories: Array.isArray(appSettings.expenseCategories) ? appSettings.expenseCategories : DEFAULT_EXPENSE_CATEGORIES,
     incomeCategories: Array.isArray(appSettings.incomeCategories) ? appSettings.incomeCategories : DEFAULT_INCOME_CATEGORIES,
+    recurringTransactions: Array.isArray(data.recurring_transactions) 
+      ? data.recurring_transactions 
+      : (Array.isArray(appSettings.recurringTransactions) ? appSettings.recurringTransactions : []),
     goals: Array.isArray(data.goals) ? data.goals : [],
     notes: Array.isArray(data.notes) ? data.notes : [],
     projects: Array.isArray(data.projects) ? data.projects : [],
@@ -97,6 +109,7 @@ export const saveCloudUserData = async (stateData) => {
         ...(stateData.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 }),
         expenseCategories: stateData.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         incomeCategories: stateData.incomeCategories || DEFAULT_INCOME_CATEGORIES,
+        recurringTransactions: stateData.recurringTransactions || [],
       },
       streak_data: stateData.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 },
       code_reading_progress: stateData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 },

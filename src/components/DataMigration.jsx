@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
 import { Download, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 
-const DATA_KEYS = ['learnedCards', 'favCards', 'todoData', 'habitData', 'financeData', 'goalsData', 'notesData', 'projectsData', 'countdownData', 'appSettings', 'streakData', 'myfee_cr_progress', 'expenseCategories', 'incomeCategories'];
+const DATA_KEYS = ['learnedCards', 'favCards', 'todoData', 'habitData', 'financeData', 'recurringTransactions', 'goalsData', 'notesData', 'projectsData', 'countdownData', 'appSettings', 'streakData', 'myfee_cr_progress', 'expenseCategories', 'incomeCategories'];
 
 export default function DataMigration() {
   const { importAllData } = useStore();

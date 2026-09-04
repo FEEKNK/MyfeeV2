@@ -1,11 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import useStore from '../store/useStore';
 import { Volume2, Star, CheckCircle, RefreshCw } from 'lucide-react';
 
+const getUnlearnedCard = (vocab, learned) => {
+  if (!vocab || vocab.length === 0) return null;
+  const unlearned = vocab.filter(c => !learned.includes(c.id));
+  const pool = unlearned.length > 0 ? unlearned : vocab;
+  return pool[Math.floor(Math.random() * pool.length)] || null;
+};
+
 const FlashcardWidget = () => {
   const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, incrementCardsFlipped } = useStore();
-  const [currentCard, setCurrentCard] = useState(null);
+  const [selectedCard, setSelectedCard] = useState(() => getUnlearnedCard(vocabulary, learnedCards));
   const [isFlipped, setIsFlipped] = useState(false);
 
   const handleFlip = () => {
@@ -16,19 +23,14 @@ const FlashcardWidget = () => {
   };
 
   const pickRandomCard = React.useCallback(() => {
-    if (!vocabulary || vocabulary.length === 0) return;
-    const unlearned = vocabulary.filter(c => !learnedCards.includes(c.id));
-    const pool = unlearned.length > 0 ? unlearned : vocabulary;
-    const random = pool[Math.floor(Math.random() * pool.length)];
-    setCurrentCard(random);
-    setIsFlipped(false);
+    const nextCard = getUnlearnedCard(vocabulary, learnedCards);
+    if (nextCard) {
+      setSelectedCard(nextCard);
+      setIsFlipped(false);
+    }
   }, [vocabulary, learnedCards]);
 
-  // Pick a random unlearned card on mount
-  useEffect(() => {
-    pickRandomCard();
-  }, [pickRandomCard]);
-
+  const currentCard = selectedCard || getUnlearnedCard(vocabulary, learnedCards);
   if (!currentCard) return null;
 
   const isFav = favCards.includes(currentCard.id);

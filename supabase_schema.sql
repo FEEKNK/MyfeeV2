@@ -15,13 +15,17 @@ CREATE TABLE IF NOT EXISTS public.app_sync_data (
     notes JSONB DEFAULT '[]'::jsonb,
     projects JSONB DEFAULT '[]'::jsonb,
     countdowns JSONB DEFAULT '[]'::jsonb,
-    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": "3804", "isPinEnabled": true}'::jsonb,
+    -- app_settings also stores expenseCategories, incomeCategories, and recurringTransactions seamlessly
+    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": "3804", "isPinEnabled": true, "recurringTransactions": []}'::jsonb,
     streak_data JSONB DEFAULT '{"count": 0, "lastDate": null, "cardsFlippedToday": 0}'::jsonb,
     code_reading_progress JSONB DEFAULT '{"mode": "code", "levelIndex": 0, "questionIndex": 0}'::jsonb,
     home_feature_order JSONB DEFAULT '["flashcard", "todo", "habit", "finance", "goals", "notes", "projects", "pomodoro", "countdown", "breathing", "quiz", "code_reading", "settings"]'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Optional: If upgrading an existing database and you want to ensure default settings contain recurringTransactions
+-- UPDATE public.app_sync_data SET app_settings = app_settings || '{"recurringTransactions": []}'::jsonb WHERE app_settings->'recurringTransactions' IS NULL;
 
 -- 2. Enable Row Level Security (RLS)
 ALTER TABLE public.app_sync_data ENABLE ROW LEVEL SECURITY;

@@ -13,7 +13,6 @@ import {
   Wind,
   Settings,
   ChevronRight,
-  Sparkles,
 } from 'lucide-react';
 
 const CATEGORIES = [

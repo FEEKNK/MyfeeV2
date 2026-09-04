@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import useStore from '../store/useStore';
 import { Volume2, Star, CheckCircle, RefreshCw, ArrowLeft, BookOpen } from 'lucide-react';
@@ -6,12 +6,30 @@ import { useNavigate } from 'react-router-dom';
 
 const LEVELS = ['All', 'A1', 'A2', 'B1', 'B2', 'C1'];
 
+function pickRandomCard(vocab, learned, showLearned, currentId = null) {
+  if (!vocab || vocab.length === 0) return null;
+  let pool = vocab.filter(c => showLearned ? learned.includes(c.id) : !learned.includes(c.id));
+  if (pool.length === 0) pool = vocab;
+
+  const available = pool.filter(c => c.id !== currentId);
+  const finalPool = available.length > 0 ? available : pool;
+
+  return finalPool[Math.floor(Math.random() * finalPool.length)] || null;
+}
+
 export default function FlashcardPage() {
   const navigate = useNavigate();
   const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, flashcardFilter, setFlashcardFilter, incrementCardsFlipped } = useStore();
-  const [currentCard, setCurrentCard] = useState(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [showLearned, setShowLearned] = useState(false);
+
+  const filteredVocab = React.useMemo(() => {
+    return flashcardFilter === 'All' 
+      ? vocabulary 
+      : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
+  }, [flashcardFilter, vocabulary]);
+
+  const [currentCard, setCurrentCard] = useState(() => pickRandomCard(filteredVocab, learnedCards, false));
 
   const handleFlip = () => {
     if (!isFlipped) {
@@ -20,29 +38,16 @@ export default function FlashcardPage() {
     setIsFlipped(!isFlipped);
   };
 
-  const filteredVocab = flashcardFilter === 'All' 
-    ? vocabulary 
-    : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
-
-  function pickRandom(vocab, learned, currentId = null) {
-    if (!vocab || vocab.length === 0) return null;
-    let pool = vocab.filter(c => showLearned ? learned.includes(c.id) : !learned.includes(c.id));
-    if (pool.length === 0) pool = vocab;
-
-    // Avoid picking the exact same card again if possible
-    let available = pool.filter(c => c.id !== currentId);
-    if (available.length === 0) available = pool;
-
-    return available[Math.floor(Math.random() * available.length)];
+  const [prevFilterKey, setPrevFilterKey] = useState(`${flashcardFilter}_${showLearned}`);
+  const currentFilterKey = `${flashcardFilter}_${showLearned}`;
+  if (prevFilterKey !== currentFilterKey) {
+    setPrevFilterKey(currentFilterKey);
+    setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned));
   }
-
-  useEffect(() => {
-    setCurrentCard(pickRandom(filteredVocab, learnedCards));
-  }, [flashcardFilter, vocabulary, showLearned]);
 
   const next = () => {
     setIsFlipped(false);
-    setTimeout(() => setCurrentCard(pickRandom(filteredVocab, learnedCards, currentCard?.id)), 150);
+    setTimeout(() => setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned, currentCard?.id)), 150);
   };
 
   const handleSpeak = (e, text) => {

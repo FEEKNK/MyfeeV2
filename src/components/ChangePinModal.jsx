@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { KeyRound, X, Check, AlertCircle, CheckCircle2, Delete } from 'lucide-react';
+import { KeyRound, X, AlertCircle, CheckCircle2, Delete } from 'lucide-react';
 import useStore from '../store/useStore';
 
 export default function ChangePinModal({ isOpen, onClose }) {
@@ -14,7 +14,10 @@ export default function ChangePinModal({ isOpen, onClose }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [shakeKey, setShakeKey] = useState(0);
 
-  useEffect(() => {
+  // Sync reset on reopen using React's official prop change pattern
+  const [prevOpen, setPrevOpen] = useState(isOpen);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
     if (isOpen) {
       setStep('current');
       setCurrentInput('');
@@ -22,7 +25,7 @@ export default function ChangePinModal({ isOpen, onClose }) {
       setConfirmPin('');
       setErrorMsg('');
     }
-  }, [isOpen]);
+  }
 
   if (!isOpen) return null;
 

@@ -7,27 +7,34 @@ import { fetchCloudUserData, saveCloudUserData, subscribeToCloudChanges } from '
 const DEFAULT_EXPENSE_CATEGORIES = ['อาหาร', 'เดินทาง', 'ช้อปปิ้ง', 'ความบันเทิง', 'สุขภาพ', 'บิล', 'อื่นๆ'];
 const DEFAULT_INCOME_CATEGORIES = ['เงินเดือน/รายได้', 'ฟรีแลนซ์', 'ลงทุน', 'อื่นๆ'];
 
-// ── PIN Hashing ──────────────────────────────────────────────
+// ── PIN Hashing (PBKDF2) ─────────────────────────────────────
+const PBKDF2_ITERATIONS = 100000;
+const STATIC_SALT = new TextEncoder().encode('myfee_v2_secure_kdf_salt');
+
 const hashPin = async (pin) => {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(pin),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: STATIC_SALT, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  );
+  return Array.from(new Uint8Array(derivedBits))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+const hashPinLegacy = async (pin) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(pin + 'myfee_salt_v2');
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
-
-const hashPinSync = (pin) => {
-  // Simple sync hash for initial comparison — fallback for non-hashed PINs
-  let hash = 0;
-  const salted = pin + 'myfee_salt_v2';
-  for (let i = 0; i < salted.length; i++) {
-    const char = salted.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return 'v2hash_' + Math.abs(hash).toString(36);
-};
-
 // ── Habit Streak Calculator ──────────────────────────────────
 const calculateStreak = (history) => {
   if (!history || history.length === 0) return 0;
@@ -62,7 +69,13 @@ const loadFromStorage = (key, defaultValue) => {
 };
 
 const saveToStorage = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    if (err.name === 'QuotaExceededError' || err.code === 22) {
+      console.error(`[Storage Full] Cannot persist key: ${key}. LocalStorage quota exceeded.`);
+    }
+  }
 };
 
 const DEFAULT_HABITS = [
@@ -76,8 +89,16 @@ const DEFAULT_FEATURE_ORDER = [
   'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
 ];
 
-const applyCloudDataToStore = (set, cloudData) => {
+const applyCloudDataToStore = (set, get, cloudData) => {
   if (!cloudData) return;
+
+  const state = get();
+  if (cloudData.updatedAt && state.lastSyncedAt) {
+    const cloudTime = new Date(cloudData.updatedAt).getTime();
+    const localTime = new Date(state.lastSyncedAt).getTime();
+    if (cloudTime <= localTime) return; // Prevent overwriting local active edits
+  }
+
   const learnedCards = Array.isArray(cloudData.learnedCards) ? cloudData.learnedCards : [];
   const favCards = Array.isArray(cloudData.favCards) ? cloudData.favCards : [];
   const todos = Array.isArray(cloudData.todos) ? cloudData.todos : [];
@@ -85,6 +106,10 @@ const applyCloudDataToStore = (set, cloudData) => {
   const finance = Array.isArray(cloudData.finance) ? cloudData.finance : [];
   const expenseCategories = Array.isArray(cloudData.expenseCategories) ? cloudData.expenseCategories : DEFAULT_EXPENSE_CATEGORIES;
   const incomeCategories = Array.isArray(cloudData.incomeCategories) ? cloudData.incomeCategories : DEFAULT_INCOME_CATEGORIES;
+  const currentLocalRecurring = loadFromStorage('recurringTransactions', []);
+  const recurringTransactions = Array.isArray(cloudData.recurringTransactions) && cloudData.recurringTransactions.length > 0
+    ? cloudData.recurringTransactions
+    : (currentLocalRecurring.length > 0 ? currentLocalRecurring : []);
   const goals = Array.isArray(cloudData.goals) ? cloudData.goals : [];
   const notes = Array.isArray(cloudData.notes) ? cloudData.notes : [];
   const projects = Array.isArray(cloudData.projects) ? cloudData.projects : [];
@@ -101,6 +126,7 @@ const applyCloudDataToStore = (set, cloudData) => {
   saveToStorage('financeData', finance);
   saveToStorage('expenseCategories', expenseCategories);
   saveToStorage('incomeCategories', incomeCategories);
+  saveToStorage('recurringTransactions', recurringTransactions);
   saveToStorage('goalsData', goals);
   saveToStorage('notesData', notes);
   saveToStorage('projectsData', projects);
@@ -118,6 +144,7 @@ const applyCloudDataToStore = (set, cloudData) => {
     finance,
     expenseCategories,
     incomeCategories,
+    recurringTransactions,
     goals,
     notes,
     projects,
@@ -142,6 +169,8 @@ const debounceSyncToCloud = (get) => {
   }, 600);
 };
 
+let cloudUnsubscribe = null;
+
 const useStore = create((set, get) => ({
   // ── Supabase Cloud Sync (Single-User Mode / No Login) ─────────
   isSyncing: false,
@@ -152,12 +181,17 @@ const useStore = create((set, get) => ({
   initSync: async () => {
     if (!isSupabaseConfigured() || !supabase) return;
     
+    if (cloudUnsubscribe) {
+      cloudUnsubscribe();
+      cloudUnsubscribe = null;
+    }
+    
     // 1. Initial fetch from cloud
     await get().syncCloudData();
 
     // 2. Subscribe to realtime updates from phone/other devices
-    subscribeToCloudChanges((incomingData) => {
-      applyCloudDataToStore(set, incomingData);
+    cloudUnsubscribe = subscribeToCloudChanges((incomingData) => {
+      applyCloudDataToStore(set, get, incomingData);
     });
   },
 
@@ -184,13 +218,22 @@ const useStore = create((set, get) => ({
           (state.habits && state.habits.length > 0) ||
           (state.todos && state.todos.length > 0) ||
           (state.finance && state.finance.length > 0) ||
-          (state.notes && state.notes.length > 0);
+          (state.notes && state.notes.length > 0) ||
+          (state.recurringTransactions && state.recurringTransactions.length > 0);
 
         if (isCloudEmpty && hasLocalData) {
           // Cloud is newly initialized with empty data, preserve local data and push to cloud
           await state.pushStateToCloud();
         } else {
-          applyCloudDataToStore(set, cloudData);
+          // If cloud has data but its recurringTransactions is empty while local has items, preserve local and sync up
+          if ((!cloudData.recurringTransactions || cloudData.recurringTransactions.length === 0) &&
+              (state.recurringTransactions && state.recurringTransactions.length > 0)) {
+            cloudData.recurringTransactions = state.recurringTransactions;
+            applyCloudDataToStore(set, cloudData);
+            await state.pushStateToCloud();
+          } else {
+            applyCloudDataToStore(set, cloudData);
+          }
         }
       } else {
         // First time initialization on Supabase
@@ -556,6 +599,7 @@ const useStore = create((set, get) => ({
         saveToStorage('recurringTransactions', next);
         return { recurringTransactions: next };
       });
+      debounceSyncToCloud(get);
     }
   },
 
@@ -764,7 +808,15 @@ const useStore = create((set, get) => ({
     
     if (isHashed) {
       const inputHash = await hashPin(inputPin);
-      return inputHash === stored;
+      if (inputHash === stored) return true;
+      
+      const legacyHash = await hashPinLegacy(inputPin);
+      if (legacyHash === stored) {
+        state.updatePinHash(inputPin);
+        return true;
+      }
+      
+      return false;
     } else {
       // Legacy plain text — migrate to hashed on match
       if (inputPin === stored) {
@@ -841,6 +893,7 @@ const useStore = create((set, get) => ({
       todoData: state.todos || [],
       habitData: state.habits || [],
       financeData: state.finance || [],
+      recurringTransactions: state.recurringTransactions || [],
       expenseCategories: state.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
       incomeCategories: state.incomeCategories || DEFAULT_INCOME_CATEGORIES,
       goalsData: state.goals || [],
@@ -861,6 +914,7 @@ const useStore = create((set, get) => ({
     const todos = raw.todoData || raw.todos || [];
     const habits = raw.habitData || raw.habits || DEFAULT_HABITS;
     const finance = raw.financeData || raw.finance || [];
+    const recurringTransactions = raw.recurringTransactions || raw.recurring_transactions || [];
     const learnedCards = raw.learnedCards || [];
     const favCards = raw.favCards || [];
     const expenseCategories = raw.expenseCategories || DEFAULT_EXPENSE_CATEGORIES;
@@ -879,6 +933,7 @@ const useStore = create((set, get) => ({
     saveToStorage('todoData', todos);
     saveToStorage('habitData', habits);
     saveToStorage('financeData', finance);
+    saveToStorage('recurringTransactions', recurringTransactions);
     saveToStorage('expenseCategories', expenseCategories);
     saveToStorage('incomeCategories', incomeCategories);
     saveToStorage('goalsData', goals);
@@ -896,6 +951,7 @@ const useStore = create((set, get) => ({
       todos,
       habits,
       finance,
+      recurringTransactions,
       expenseCategories,
       incomeCategories,
       goals,

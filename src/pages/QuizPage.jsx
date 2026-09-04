@@ -1,73 +1,88 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, Trophy, CheckCircle2, XCircle, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 
+function buildQuiz(filteredVocab, learnedCards, testLearnedOnly, autoPlay) {
+  const dataPool = testLearnedOnly 
+    ? filteredVocab.filter(w => learnedCards.includes(w.id))
+    : filteredVocab;
+
+  if (dataPool.length === 0) {
+    return { error: testLearnedOnly ? 'ยังไม่มีคำศัพท์ที่จำได้ในหมวดนี้' : 'ไม่มีคำศัพท์ในหมวดนี้' };
+  }
+
+  const correct = dataPool[Math.floor(Math.random() * dataPool.length)];
+  const type = Math.floor(Math.random() * 3); // 0: Meaning, 1: Listening, 2: Spelling
+
+  if (type === 1 && autoPlay && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(correct.word);
+    u.lang = 'en-US';
+    window.speechSynthesis.speak(u);
+  }
+
+  if (type === 2) {
+    return { type, correct, options: [] };
+  }
+
+  const distractors = [];
+  const maxDistractors = Math.min(3, filteredVocab.length - 1);
+  let attempts = 0;
+  while (distractors.length < maxDistractors && attempts < 50) {
+    attempts++;
+    const r = filteredVocab[Math.floor(Math.random() * filteredVocab.length)];
+    if (r.id !== correct.id && !distractors.some(d => d.id === r.id)) distractors.push(r);
+  }
+  const options = [correct, ...distractors].sort(() => Math.random() - 0.5);
+  return { type, correct, options };
+}
+
 export default function QuizPage() {
   const navigate = useNavigate();
   const { vocabulary, flashcardFilter, markLearned, settings, learnedCards } = useStore();
   const [score, setScore] = useState(0);
-  const [quizState, setQuizState] = useState(null); // { type, correct, options, error }
   const [inputVal, setInputVal] = useState('');
   const [feedback, setFeedback] = useState(null); // 'correct' | 'wrong' | null
   const [testLearnedOnly, setTestLearnedOnly] = useState(true); // Default to test learned words
   const inputRef = useRef(null);
   const timeoutRef = useRef(null);
 
-  const filteredVocab = flashcardFilter === 'All' 
-    ? vocabulary 
-    : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
+  const filteredVocab = useMemo(() => {
+    return flashcardFilter === 'All' 
+      ? vocabulary 
+      : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
+  }, [flashcardFilter, vocabulary]);
 
-  const generateQuiz = () => {
+  const [quizState, setQuizState] = useState(() => 
+    buildQuiz(
+      flashcardFilter === 'All' ? vocabulary : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter)),
+      learnedCards,
+      true,
+      settings.autoPlay
+    )
+  );
+
+  const [prevFilterKey, setPrevFilterKey] = useState(`${flashcardFilter}_${testLearnedOnly}`);
+  const currentFilterKey = `${flashcardFilter}_${testLearnedOnly}`;
+  if (prevFilterKey !== currentFilterKey) {
+    setPrevFilterKey(currentFilterKey);
     setFeedback(null);
     setInputVal('');
-    
-    let dataPool = testLearnedOnly 
-      ? filteredVocab.filter(w => learnedCards.includes(w.id))
-      : filteredVocab;
+    setQuizState(buildQuiz(filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay));
+  }
 
-    // Fallback if not enough words
-    if (dataPool.length === 0) {
-      setQuizState({ error: testLearnedOnly ? 'ยังไม่มีคำศัพท์ที่จำได้ในหมวดนี้' : 'ไม่มีคำศัพท์ในหมวดนี้' });
-      return;
-    }
-
-    const correct = dataPool[Math.floor(Math.random() * dataPool.length)];
-    const type = Math.floor(Math.random() * 3); // 0: Meaning, 1: Listening, 2: Spelling
-
-    if (type === 1 && settings.autoPlay) {
-      const u = new SpeechSynthesisUtterance(correct.word);
-      u.lang = 'en-US';
-      window.speechSynthesis.speak(u);
-    }
-
-    if (type === 2) {
-      setQuizState({ type, correct, options: [] });
-      setTimeout(() => inputRef.current?.focus(), 100);
-      return;
-    }
-
-    // Generate distractors
-    const fallbackPool = filteredVocab; // Use all vocab for distractors if needed
-    const distractors = [];
-    const maxDistractors = Math.min(3, fallbackPool.length - 1);
-    let attempts = 0;
-    while (distractors.length < maxDistractors && attempts < 50) {
-      attempts++;
-      const r = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
-      if (r.id !== correct.id && !distractors.some(d => d.id === r.id)) distractors.push(r);
-    }
-    const options = [correct, ...distractors].sort(() => Math.random() - 0.5);
-    setQuizState({ type, correct, options });
-  };
+  const generateQuiz = useCallback(() => {
+    setFeedback(null);
+    setInputVal('');
+    setQuizState(buildQuiz(filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay));
+  }, [filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay]);
 
   useEffect(() => {
-    generateQuiz();
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    }
-  }, [testLearnedOnly, flashcardFilter]);
+    };
+  }, []);
 
   const handleAnswer = (answer) => {
     if (feedback !== null) return;

@@ -36,6 +36,7 @@ export default function BreathingPage() {
               const next = bc + 1;
               if (next >= MAX_BREATHS) {
                 clearTimer();
+                setRetentionSecs(0);
                 setPhase(PHASES.RETENTION);
                 return 0;
               }
@@ -52,7 +53,6 @@ export default function BreathingPage() {
   // Retention phase timer
   useEffect(() => {
     if (phase === PHASES.RETENTION) {
-      setRetentionSecs(0);
       timerRef.current = setInterval(() => {
         setRetentionSecs(s => s + 1);
       }, 1000);
@@ -63,7 +63,6 @@ export default function BreathingPage() {
   // Recovery phase timer
   useEffect(() => {
     if (phase === PHASES.RECOVERY) {
-      setRecoverySecs(15);
       timerRef.current = setInterval(() => {
         setRecoverySecs(s => {
           if (s <= 1) {
@@ -91,6 +90,7 @@ export default function BreathingPage() {
 
   const endRetention = () => {
     clearTimer();
+    setRecoverySecs(15);
     setPhase(PHASES.RECOVERY);
   };
 

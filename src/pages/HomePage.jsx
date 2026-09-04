@@ -11,7 +11,6 @@ import {
   Target,
   FileText,
   Rocket,
-  Timer,
   Hourglass,
   Wind,
   HelpCircle,

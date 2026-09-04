@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
 import {
   ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, Check, X, Calendar, Folder, Wallet,
-  PieChart as PieChartIcon, BarChart3, Pencil, Repeat, Settings2, ChevronLeft, ChevronRight
+  PieChart as PieChartIcon, BarChart3, Pencil, Repeat, Settings2, ChevronLeft, ChevronRight, Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import AiAnalysisModal from '../components/AiAnalysisModal';
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const FULL_THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -40,6 +41,7 @@ export default function FinancePage() {
   const [viewFilter, setViewFilter] = useState('thisMonth'); // 'thisMonth' | 'all' | 'charts' | 'recurring'
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [showAiModal, setShowAiModal] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState('expense');
@@ -344,6 +346,14 @@ export default function FinancePage() {
             <t.icon className="w-3.5 h-3.5" /> <span>{t.label}</span>
           </button>
         ))}
+        {viewFilter === 'thisMonth' && (
+          <button 
+            onClick={() => setShowAiModal(true)}
+            className="flex-none px-3 py-1.5 rounded-xl text-xs font-bold border border-purple-500/30 bg-gradient-to-r from-pink-500/20 to-purple-500/20 text-purple-300 flex items-center justify-center gap-1.5 hover:from-pink-500/30 hover:to-purple-500/30 transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> <span>AI วิเคราะห์</span>
+          </button>
+        )}
       </div>
 
       {/* Month Navigation for Month View */}
@@ -684,6 +694,14 @@ export default function FinancePage() {
           </AnimatePresence>
         )}
       </div>
+
+      <AiAnalysisModal 
+        isOpen={showAiModal} 
+        onClose={() => setShowAiModal(false)}
+        financeData={finance}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+      />
     </div>
   );
 }

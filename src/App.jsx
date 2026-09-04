@@ -32,7 +32,7 @@ export default function App() {
   useEffect(() => {
     checkStreak();
     initSync();
-  }, []);
+  }, [checkStreak, initSync]);
 
   return (
     <BrowserRouter>
@@ -48,15 +48,14 @@ export default function App() {
           </SplineErrorBoundary>
         </div>
 
-        {/* PIN Lock Screen Overlay */}
-        <AnimatePresence>
-          {isPinActive && !isUnlocked && (
-            <PinLockScreen onUnlock={() => setIsUnlocked(true)} />
+        {/* Protected App Content with PIN Lock Security */}
+        <AnimatePresence mode="wait">
+          {isPinActive && !isUnlocked ? (
+            <PinLockScreen key="pin-lock" onUnlock={() => setIsUnlocked(true)} />
+          ) : (
+            <AppRouter key="app-router" />
           )}
         </AnimatePresence>
-
-        {/* App Content with Router */}
-        <AppRouter />
       </div>
     </BrowserRouter>
   );
