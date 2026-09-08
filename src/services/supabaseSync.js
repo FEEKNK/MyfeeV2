@@ -7,16 +7,7 @@ const DEFAULT_FEATURE_ORDER = [
   'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
 ];
 
-export const getClientSyncId = () => {
-  let id = localStorage.getItem('myfee_client_sync_id');
-  if (!id) {
-    id = 'user_' + crypto.randomUUID();
-    localStorage.setItem('myfee_client_sync_id', id);
-  }
-  return id;
-};
-
-export const SINGLE_USER_ID = getClientSyncId();
+export const SINGLE_USER_ID = 'single_user';
 
 /**
  * Helper to parse raw database record into store shape

@@ -232,10 +232,10 @@ const useStore = create((set, get) => ({
           if ((!cloudData.recurringTransactions || cloudData.recurringTransactions.length === 0) &&
               (state.recurringTransactions && state.recurringTransactions.length > 0)) {
             cloudData.recurringTransactions = state.recurringTransactions;
-            applyCloudDataToStore(set, cloudData);
+            applyCloudDataToStore(set, get, cloudData);
             await state.pushStateToCloud();
           } else {
-            applyCloudDataToStore(set, cloudData);
+            applyCloudDataToStore(set, get, cloudData);
           }
         }
       } else {
