@@ -48,6 +48,7 @@ export const parseCloudData = (data) => {
     notes: Array.isArray(data.notes) ? data.notes : [],
     projects: Array.isArray(data.projects) ? data.projects : [],
     countdowns: Array.isArray(data.countdowns) ? data.countdowns : [],
+    footballMatches: Array.isArray(data.football_matches) ? data.football_matches : [],
     settings: appSettings,
     streak: data.streak_data || { count: 0, lastDate: null, cardsFlippedToday: 0 },
     codeReadingProgress: data.code_reading_progress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
@@ -105,6 +106,7 @@ export const saveCloudUserData = async (stateData) => {
       notes: stateData.notes || [],
       projects: stateData.projects || [],
       countdowns: stateData.countdowns || [],
+      football_matches: stateData.footballMatches || [],
       app_settings: {
         ...(stateData.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 }),
         expenseCategories: stateData.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
@@ -137,7 +139,7 @@ export const subscribeToCloudChanges = (onUpdate) => {
 
   try {
     const channel = supabase
-      .channel('public:app_sync_data')
+      .channel(`app_sync_data_${Date.now()}`)
       .on(
         'postgres_changes',
         {

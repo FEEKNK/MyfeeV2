@@ -114,6 +114,7 @@ const applyCloudDataToStore = (set, get, cloudData) => {
   const notes = Array.isArray(cloudData.notes) ? cloudData.notes : [];
   const projects = Array.isArray(cloudData.projects) ? cloudData.projects : [];
   const countdowns = Array.isArray(cloudData.countdowns) ? cloudData.countdowns : [];
+  const footballMatches = Array.isArray(cloudData.footballMatches) ? cloudData.footballMatches : [];
   const settings = cloudData.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 };
   const streak = cloudData.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 };
   const codeReadingProgress = cloudData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 };
@@ -131,6 +132,7 @@ const applyCloudDataToStore = (set, get, cloudData) => {
   saveToStorage('notesData', notes);
   saveToStorage('projectsData', projects);
   saveToStorage('countdownData', countdowns);
+  saveToStorage('footballMatches', footballMatches);
   saveToStorage('appSettings', settings);
   saveToStorage('streakData', streak);
   saveToStorage('myfee_cr_progress', codeReadingProgress);
@@ -149,6 +151,7 @@ const applyCloudDataToStore = (set, get, cloudData) => {
     notes,
     projects,
     countdowns,
+    footballMatches,
     settings,
     streak,
     codeReadingProgress,
@@ -757,6 +760,48 @@ const useStore = create((set, get) => ({
     debounceSyncToCloud(get);
   },
 
+  // ── Football Matches ──────────────────────────────────────────
+  footballMatches: loadFromStorage('footballMatches', []),
+
+  addFootballMatch: (dateStr, timeStr, opponent, competition, squad) => {
+    set((state) => {
+      // Use crypto.randomUUID for guaranteed unique IDs (no collision in rapid loops)
+      const item = {
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        date: dateStr,
+        time: timeStr || '',
+        opponent: opponent.trim(),
+        competition: competition || '',
+        squad: squad || 'ชุดใหญ่',
+        result: '', // "2-0", "1-1"
+        status: 'upcoming' // 'upcoming', 'completed'
+      };
+      const next = [...state.footballMatches, item].sort((a, b) => new Date(a.date) - new Date(b.date));
+      saveToStorage('footballMatches', next);
+      return { footballMatches: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  editFootballMatch: (id, updates) => {
+    set((state) => {
+      const next = state.footballMatches.map(m => m.id === id ? { ...m, ...updates } : m)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      saveToStorage('footballMatches', next);
+      return { footballMatches: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  deleteFootballMatch: (id) => {
+    set((state) => {
+      const next = state.footballMatches.filter(m => m.id !== id);
+      saveToStorage('footballMatches', next);
+      return { footballMatches: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
   // ── Pomodoro Stats (persisted) ─────────────────────────────────
   pomodoroStats: loadFromStorage('pomodoroStats', { totalSessions: 0, todaySessions: 0, lastSessionDate: null }),
 
@@ -900,6 +945,7 @@ const useStore = create((set, get) => ({
       notesData: state.notes || [],
       projectsData: state.projects || [],
       countdownData: state.countdowns || [],
+      footballMatches: state.footballMatches || [],
       appSettings: state.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 },
       streakData: state.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 },
       myfee_cr_progress: state.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
@@ -923,6 +969,7 @@ const useStore = create((set, get) => ({
     const notes = raw.notesData || raw.notes || [];
     const projects = raw.projectsData || raw.projects || [];
     const countdowns = raw.countdownData || raw.countdowns || [];
+    const footballMatches = raw.footballMatches || raw.football_matches || [];
     const settings = raw.appSettings || raw.settings || { darkMode: true, autoPlay: true, dailyBudget: 0, monthlyBudget: 0 };
     const streak = raw.streakData || raw.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 };
     const codeReadingProgress = raw.myfee_cr_progress || raw.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 };
@@ -940,6 +987,7 @@ const useStore = create((set, get) => ({
     saveToStorage('notesData', notes);
     saveToStorage('projectsData', projects);
     saveToStorage('countdownData', countdowns);
+    saveToStorage('footballMatches', footballMatches);
     saveToStorage('appSettings', settings);
     saveToStorage('streakData', streak);
     saveToStorage('myfee_cr_progress', codeReadingProgress);
@@ -958,6 +1006,7 @@ const useStore = create((set, get) => ({
       notes,
       projects,
       countdowns,
+      footballMatches,
       settings,
       streak,
       codeReadingProgress,

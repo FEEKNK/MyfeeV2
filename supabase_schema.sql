@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public.app_sync_data (
     notes JSONB DEFAULT '[]'::jsonb,
     projects JSONB DEFAULT '[]'::jsonb,
     countdowns JSONB DEFAULT '[]'::jsonb,
+    football_matches JSONB DEFAULT '[]'::jsonb,
     -- app_settings also stores expenseCategories, incomeCategories, and recurringTransactions seamlessly
     app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": "3804", "isPinEnabled": true, "recurringTransactions": []}'::jsonb,
     streak_data JSONB DEFAULT '{"count": 0, "lastDate": null, "cardsFlippedToday": 0}'::jsonb,

@@ -1,13 +1,73 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${API_KEY}`;
+// Helper to extract API keys (supports single key or comma/semicolon/newline separated keys)
+export const getGeminiApiKeys = () => {
+  const raw = import.meta.env.VITE_GEMINI_API_KEYS || import.meta.env.VITE_GEMINI_API_KEY || '';
+  return raw
+    .split(/[,;\n]/)
+    .map(k => k.trim())
+    .filter(Boolean);
+};
+
+// Central caller with automatic fallback to backup keys when quota is exceeded (HTTP 429)
+const callGeminiWithFallback = async (payload) => {
+  const keys = getGeminiApiKeys();
+  if (keys.length === 0) {
+    throw new Error('ไม่พบ API Key กรุณาตั้งค่า VITE_GEMINI_API_KEY ในไฟล์ .env');
+  }
+
+  let lastError = null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errMsg = errorData.error?.message || response.statusText || 'เกิดข้อผิดพลาดในการเชื่อมต่อ API';
+        
+        // Check if error is quota exhaustion or rate limit (HTTP 429)
+        const isQuota = response.status === 429 || 
+                        errMsg.toLowerCase().includes('quota') || 
+                        errMsg.toLowerCase().includes('resource_exhausted');
+
+        if (isQuota && i < keys.length - 1) {
+          console.warn(`[Gemini API] Key ลำดับที่ ${i + 1} โควตาเต็ม (Quota Exceeded) กำลังสลับไปใช้ Key สำรองลำดับที่ ${i + 2}...`);
+          continue;
+        }
+
+        throw new Error(errMsg);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      lastError = error;
+      const isQuota = error.message?.toLowerCase().includes('quota') || 
+                      error.message?.toLowerCase().includes('resource_exhausted') ||
+                      error.message?.includes('429');
+
+      if (isQuota && i < keys.length - 1) {
+        console.warn(`[Gemini API] Key ลำดับที่ ${i + 1} โควตาเต็ม กำลังสลับไปใช้ Key สำรองลำดับที่ ${i + 2}...`);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastError || new Error('โควตาเต็มทุก API Key แล้ว กรุณารอสักครู่ หรือเพิ่ม Key สำรองใหม่');
+};
 
 const FULL_THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
 export const analyzeSpending = async (financeData, selectedMonth, selectedYear, range) => {
-  if (!API_KEY) {
-    throw new Error('ไม่พบ API Key กรุณาตั้งค่า VITE_GEMINI_API_KEY ในไฟล์ .env');
-  }
-
   let filteredData = [];
   let title = '';
 
@@ -90,32 +150,219 @@ ${recentTransactions}
 `;
 
   try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2000,
-        }
-      })
+    const data = await callGeminiWithFallback({
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2000,
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Gemini API Error:', errorData);
-      throw new Error(errorData.error?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ API');
-    }
-
-    const data = await response.json();
     return data.candidates[0].content.parts[0].text;
   } catch (error) {
     console.error('Error analyzing spending:', error);
     throw error;
   }
 };
+
+export const fetchFootballSchedule = async () => {
+  const now = new Date();
+  const prompt = `
+คุณคือระบบผู้ช่วยค้นหาข้อมูลกีฬา จงค้นหาตารางการแข่งขันฟุตบอล "ทีมชาติไทย" (Thailand National Football Team) เฉพาะนัดที่กำลังจะมาถึง (Upcoming matches) ตั้งแต่เดือน ${now.getMonth() + 1} ปี ${now.getFullYear()} เป็นต้นไป
+รวมทุกชุด (ชุดใหญ่, U23, U20, U17, ฟุตซอล) 
+
+โปรดค้นหาข้อมูลล่าสุด เช่น King's Cup, AFF Championship (ASEAN Cup), Asian Cup Qualifiers, ฟุตซอล หรือนัดกระชับมิตร FIFA Day เป็นต้น
+
+ให้ตอบกลับมาเป็น JSON Array ที่ Valid ตามมาตรฐาน (ห้ามมี comment ใน JSON เด็ดขาด) โดยแต่ละ Object ต้องมี 5 properties ดังนี้:
+1. "date" (string): วันที่แข่งขัน รูปแบบ YYYY-MM-DD
+2. "time" (string): เวลาแข่งขัน รูปแบบ HH:MM (ถ้าไม่ทราบให้ใส่ "")
+3. "opponent" (string): ชื่อทีมคู่แข่ง
+4. "competition" (string): ชื่อรายการแข่งขัน (ถ้าอุ่นเครื่องให้ใส่ "กระชับมิตร")
+5. "squad" (string): ชุดที่แข่ง เช่น "ชุดใหญ่", "U23", "U20", "U17" หรือ "ฟุตซอล"
+
+ตัวอย่างผลลัพธ์:
+[
+  {
+    "date": "2024-10-10",
+    "time": "19:30",
+    "opponent": "ซีเรีย",
+    "competition": "King's Cup",
+    "squad": "ชุดใหญ่"
+  }
+]
+
+ข้อบังคับที่ต้องปฏิบัติตามอย่างเคร่งครัด:
+1. ห้ามมีข้อความอื่นใดๆ นอกเหนือจาก JSON Array เด็ดขาด (ห้ามเกริ่นนำ ห้ามสรุป)
+2. ห้ามใช้ Markdown code blocks (ห้ามใส่ \`\`\`json หรือ \`\`\`)
+3. พิมพ์เฉพาะ JSON ออกมาตรงๆ เลย
+`;
+
+  const requestWithSearch = {
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ googleSearch: {} }],
+    generationConfig: {
+      temperature: 0.2, 
+      maxOutputTokens: 2500,
+    }
+  };
+
+  const requestWithoutSearch = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.2, 
+      maxOutputTokens: 2500,
+    }
+  };
+
+  try {
+    let data;
+    try {
+      // 1. ลองค้นหาด้วย Google Search แบบ Realtime ก่อน
+      data = await callGeminiWithFallback(requestWithSearch);
+    } catch (searchError) {
+      console.warn('Google Search quota exceeded หรือค้นหาไม่สำเร็จ กำลังสลับไปใช้ AI ฐานข้อมูลปกติ:', searchError);
+      // 2. หาก Google Search โควตาเต็ม ให้ถอยกลับมาใช้ Gemini ตอบโดยตรง (ไม่เสีย Search Quota)
+      data = await callGeminiWithFallback(requestWithoutSearch);
+    }
+
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    
+    // Debug: log raw response to help troubleshoot
+    console.log('[Football AI] Raw response text:', text.substring(0, 500));
+
+    if (!text) {
+      throw new Error('AI ไม่ได้ตอบข้อมูลกลับมา กรุณาลองใหม่อีกครั้ง');
+    }
+    
+    // Fallback: Clean up markdown blocks if Gemini still outputs them despite instructions
+    if (text.startsWith('```json')) text = text.substring(7);
+    if (text.startsWith('```')) text = text.substring(3);
+    if (text.endsWith('```')) text = text.substring(0, text.length - 3);
+    text = text.trim();
+
+    // Safely extract JSON array portion
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      text = text.substring(firstBracket, lastBracket + 1);
+    }
+
+    // Try parsing directly first
+    try {
+      return JSON.parse(text);
+    } catch (parseError) {
+      // JSON might be truncated or malformed. Try to repair it.
+      console.warn('JSON parse failed, attempting auto-repair...', parseError.message);
+      console.log('[Football AI] Text to repair:', text.substring(0, 300));
+      return repairTruncatedJsonArray(text);
+    }
+  } catch (error) {
+    console.error('Error fetching football schedule via Gemini:', error);
+    // Give a user-friendly error when all keys are quota-exhausted
+    if (error.message?.toLowerCase().includes('quota') || error.message?.includes('429')) {
+      throw new Error('API Key ทุกตัวโควตาเต็มแล้วครับ กรุณารอ 1-2 นาทีแล้วลองใหม่ หรือเพิ่ม Key สำรองใน .env');
+    }
+    throw error;
+  }
+};
+
+// Repair truncated/malformed JSON array by extracting complete objects
+function repairTruncatedJsonArray(text) {
+  let json = text.trim();
+  
+  // Try to find the array portion
+  const arrStart = json.indexOf('[');
+  if (arrStart === -1) throw new Error('ไม่พบข้อมูล JSON ในคำตอบของ AI');
+  json = json.substring(arrStart);
+
+  // Attempt 1: Fix common JSON issues and try parsing the whole thing
+  let cleaned = json
+    // Remove JavaScript-style comments
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // Remove trailing commas before } or ]
+    .replace(/,\s*([\]}])/g, '$1')
+    // Fix unquoted property names  e.g.  date: "..." → "date": "..."
+    .replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":')
+    // Replace single-quoted strings with double-quoted  (simple heuristic)
+    .replace(/:\s*'([^']*)'/g, ': "$1"');
+
+  // If it doesn't end with ], try to close it
+  if (!cleaned.trimEnd().endsWith(']')) {
+    // Find the last complete object (ending with })
+    const lastCloseBrace = cleaned.lastIndexOf('}');
+    if (lastCloseBrace !== -1) {
+      cleaned = cleaned.substring(0, lastCloseBrace + 1) + ']';
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      console.log(`Auto-repaired (method 1): recovered ${parsed.length} match(es)`);
+      return parsed;
+    }
+  } catch {
+    // Method 1 failed, try method 2
+  }
+
+  // Attempt 2: Extract individual complete JSON objects one by one
+  const completeObjects = [];
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        let objStr = json.substring(objStart, i + 1);
+        // Clean up this individual object
+        objStr = objStr
+          .replace(/\/\/[^\n]*/g, '')
+          .replace(/,\s*([\]}])/g, '$1')
+          .replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":');
+        try {
+          const obj = JSON.parse(objStr);
+          // Validate it has the expected fields
+          if (obj.date || obj.opponent) {
+            completeObjects.push(obj);
+          }
+        } catch {
+          // Skip malformed object
+        }
+        objStart = -1;
+      }
+    }
+  }
+
+  if (completeObjects.length === 0) {
+    throw new Error('ไม่สามารถแปลงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง');
+  }
+
+  console.log(`Auto-repaired (method 2): recovered ${completeObjects.length} complete match(es) from truncated response`);
+  return completeObjects;
+}
+

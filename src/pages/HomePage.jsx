@@ -16,7 +16,8 @@ import {
   HelpCircle,
   Code,
   Settings,
-  LayoutGrid
+  LayoutGrid,
+  Trophy
 } from 'lucide-react';
 
 const StatCard = ({ label, value, icon: Icon, color, to }) => {
@@ -76,7 +77,7 @@ const GridFeatureCard = ({ title, desc, icon: Icon, color, to, badge }) => {
 
 export default function HomePage() {
   const storeData = useStore();
-  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns } = storeData;
+  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns, footballMatches } = storeData;
   const todayStr = new Date().toISOString().split('T')[0];
 
   const activeTodos = todos.filter(t => !t.completed).length;
@@ -98,6 +99,7 @@ export default function HomePage() {
     { id: 'breathing', title: "ฝึกหายใจ", desc: "Wim Hof 3 รอบ", icon: Wind, color: "bg-teal-500", to: "/breathing" },
     { id: 'quiz', title: "ทดสอบศัพท์", desc: "Quiz 3 รูปแบบ", icon: HelpCircle, color: "bg-fuchsia-500", to: "/quiz" },
     { id: 'code_reading', title: "ฝึกอ่านโค้ด", desc: "HTML, JS, SQL", icon: Code, color: "bg-cyan-500", to: "/code-reading" },
+    { id: 'football', title: "ทีมชาติไทย", getDesc: () => `${footballMatches?.length || 0} คิวเตะ`, icon: Trophy, color: "bg-blue-600", to: "/football", getBadge: () => footballMatches?.length || 0 },
     { id: 'settings', title: "ตั้งค่า & สถิติ", desc: "ธีม, PIN, งบ", icon: Settings, color: "bg-gray-500", to: "/settings" }
   ];
 
@@ -135,7 +137,7 @@ export default function HomePage() {
             <span>เมนูหลัก</span>
           </h2>
           <span className="text-[10px] text-gray-400 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">
-            12 ฟังก์ชัน
+            {FEATURES.length} ฟังก์ชัน
           </span>
         </div>
 
