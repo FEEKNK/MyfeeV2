@@ -85,7 +85,7 @@ const DEFAULT_HABITS = [
 ];
 
 const DEFAULT_FEATURE_ORDER = [
-  'flashcard', 'todo', 'habit', 'finance', 'goals', 'notes', 
+  'flashcard', 'sentences', 'todo', 'habit', 'finance', 'goals', 'notes', 
   'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
 ];
 
@@ -120,8 +120,15 @@ const applyCloudDataToStore = (set, get, cloudData) => {
   const codeReadingProgress = cloudData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 };
   const homeFeatureOrder = Array.isArray(cloudData.homeFeatureOrder) ? cloudData.homeFeatureOrder : DEFAULT_FEATURE_ORDER;
 
+  const learnedSentences = Array.isArray(cloudData.learnedSentences) ? cloudData.learnedSentences : [];
+  const favSentences = Array.isArray(cloudData.favSentences) ? cloudData.favSentences : [];
+  const sentenceLanguage = cloudData.sentenceLanguage || 'zh';
+
   saveToStorage('learnedCards', learnedCards);
   saveToStorage('favCards', favCards);
+  saveToStorage('learnedSentences', learnedSentences);
+  saveToStorage('favSentences', favSentences);
+  saveToStorage('sentenceLanguage', sentenceLanguage);
   saveToStorage('todoData', todos);
   saveToStorage('habitData', habits);
   saveToStorage('financeData', finance);
@@ -141,6 +148,9 @@ const applyCloudDataToStore = (set, get, cloudData) => {
   set({
     learnedCards,
     favCards,
+    learnedSentences,
+    favSentences,
+    sentenceLanguage,
     todos,
     habits,
     finance,
@@ -317,6 +327,63 @@ const useStore = create((set, get) => ({
         : [...state.favCards, id];
       saveToStorage('favCards', next);
       return { favCards: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  // ── Sentence Learning (Chunking / Speaking from Sentences) ────
+  sentenceLanguage: loadFromStorage('sentenceLanguage', 'zh'),
+  learnedSentences: loadFromStorage('learnedSentences', []),
+  favSentences: loadFromStorage('favSentences', []),
+  sentenceCategory: 'all',
+
+  setSentenceLanguage: (lang) => {
+    set({ sentenceLanguage: lang });
+    saveToStorage('sentenceLanguage', lang);
+    debounceSyncToCloud(get);
+  },
+
+  setSentenceCategory: (category) => {
+    set({ sentenceCategory: category });
+  },
+
+  toggleLearnedSentence: (id) => {
+    set((state) => {
+      const next = state.learnedSentences.includes(id)
+        ? state.learnedSentences.filter(sId => sId !== id)
+        : [...state.learnedSentences, id];
+      saveToStorage('learnedSentences', next);
+      return { learnedSentences: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  toggleFavSentence: (id) => {
+    set((state) => {
+      const next = state.favSentences.includes(id)
+        ? state.favSentences.filter(sId => sId !== id)
+        : [...state.favSentences, id];
+      saveToStorage('favSentences', next);
+      return { favSentences: next };
+    });
+    debounceSyncToCloud(get);
+  },
+
+  incrementSentencePractice: () => {
+    const today = new Date().toDateString();
+    set((state) => {
+      let nextStreak = { ...state.streak };
+      if (nextStreak.lastActiveDate !== today) {
+        nextStreak.cardsFlippedToday = 0;
+        nextStreak.lastActiveDate = today;
+      }
+      nextStreak.cardsFlippedToday = (nextStreak.cardsFlippedToday || 0) + 1;
+      if (nextStreak.cardsFlippedToday >= 5 && nextStreak.lastDate !== today) {
+        nextStreak.count = (nextStreak.count || 0) + 1;
+        nextStreak.lastDate = today;
+      }
+      saveToStorage('streakData', nextStreak);
+      return { streak: nextStreak };
     });
     debounceSyncToCloud(get);
   },
@@ -935,6 +1002,9 @@ const useStore = create((set, get) => ({
       exportedAt: new Date().toISOString(),
       learnedCards: state.learnedCards || [],
       favCards: state.favCards || [],
+      learnedSentences: state.learnedSentences || [],
+      favSentences: state.favSentences || [],
+      sentenceLanguage: state.sentenceLanguage || 'zh',
       todoData: state.todos || [],
       habitData: state.habits || [],
       financeData: state.finance || [],
@@ -963,6 +1033,9 @@ const useStore = create((set, get) => ({
     const recurringTransactions = raw.recurringTransactions || raw.recurring_transactions || [];
     const learnedCards = raw.learnedCards || [];
     const favCards = raw.favCards || [];
+    const learnedSentences = raw.learnedSentences || [];
+    const favSentences = raw.favSentences || [];
+    const sentenceLanguage = raw.sentenceLanguage || 'zh';
     const expenseCategories = raw.expenseCategories || DEFAULT_EXPENSE_CATEGORIES;
     const incomeCategories = raw.incomeCategories || DEFAULT_INCOME_CATEGORIES;
     const goals = raw.goalsData || raw.goals || [];
@@ -977,6 +1050,9 @@ const useStore = create((set, get) => ({
 
     saveToStorage('learnedCards', learnedCards);
     saveToStorage('favCards', favCards);
+    saveToStorage('learnedSentences', learnedSentences);
+    saveToStorage('favSentences', favSentences);
+    saveToStorage('sentenceLanguage', sentenceLanguage);
     saveToStorage('todoData', todos);
     saveToStorage('habitData', habits);
     saveToStorage('financeData', finance);
@@ -996,6 +1072,9 @@ const useStore = create((set, get) => ({
     set({
       learnedCards,
       favCards,
+      learnedSentences,
+      favSentences,
+      sentenceLanguage,
       todos,
       habits,
       finance,

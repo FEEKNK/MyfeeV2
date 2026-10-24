@@ -10,32 +10,51 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [range, setRange] = useState('month'); // 'month' | 'past3months' | 'year'
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleClose = () => {
+    setResult(null);
+    setError(null);
+    onClose();
+  };
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+  };
 
   useEffect(() => {
-    if (isOpen) {
-      handleAnalyze(range);
-    } else {
-      // Reset state when closed
-      setResult(null);
-      setError(null);
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    let isCancelled = false;
 
-  const handleAnalyze = async (selectedRange = range) => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setRange(selectedRange);
-    
-    try {
-      const analysisResult = await analyzeSpending(financeData, selectedMonth, selectedYear, selectedRange);
-      setResult(analysisResult);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    Promise.resolve().then(() => {
+      if (!isCancelled) {
+        setLoading(true);
+        setError(null);
+        setResult(null);
+      }
+    });
+
+    analyzeSpending(financeData, selectedMonth, selectedYear, range)
+      .then((analysisResult) => {
+        if (!isCancelled) {
+          setResult(analysisResult);
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, range, financeData, selectedMonth, selectedYear, refreshKey]);
 
   // Helper to safely render markdown-like text
   const renderFormattedText = (text) => {
@@ -65,7 +84,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleClose}
             className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
           />
 
@@ -91,7 +110,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
                   </div>
                 </div>
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="p-2 glass rounded-xl text-gray-400 hover:text-white transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -109,7 +128,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
                     key={tab.id}
                     onClick={() => {
                       if (range !== tab.id && !loading) {
-                        handleAnalyze(tab.id);
+                        setRange(tab.id);
                       }
                     }}
                     disabled={loading}
@@ -150,7 +169,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
                       <p className="text-sm text-gray-400">{error}</p>
                     </div>
                     <button 
-                      onClick={() => handleAnalyze(range)}
+                      onClick={handleRefresh}
                       className="mt-4 px-6 py-2.5 glass-dark border border-white/10 rounded-xl text-white font-bold flex items-center gap-2 hover:bg-white/5 transition-colors"
                     >
                       <RefreshCw className="w-4 h-4" /> ลองใหม่
@@ -174,7 +193,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
                     <Sparkles className="w-3 h-3 text-purple-400" /> Powered by Gemini
                   </div>
                   <button 
-                    onClick={() => handleAnalyze(range)}
+                    onClick={handleRefresh}
                     disabled={loading}
                     className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white font-bold flex items-center gap-1.5 hover:bg-white/10 transition-colors disabled:opacity-50"
                   >

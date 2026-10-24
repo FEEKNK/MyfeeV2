@@ -41,6 +41,13 @@ export const parseCloudData = (data) => {
     countdowns: Array.isArray(data.countdowns) ? data.countdowns : [],
     footballMatches: Array.isArray(data.football_matches) ? data.football_matches : [],
     settings: appSettings,
+    learnedSentences: Array.isArray(data.learned_sentences) 
+      ? data.learned_sentences 
+      : (Array.isArray(appSettings.learnedSentences) ? appSettings.learnedSentences : []),
+    favSentences: Array.isArray(data.fav_sentences)
+      ? data.fav_sentences
+      : (Array.isArray(appSettings.favSentences) ? appSettings.favSentences : []),
+    sentenceLanguage: appSettings.sentenceLanguage || 'zh',
     streak: data.streak_data || { count: 0, lastDate: null, cardsFlippedToday: 0 },
     codeReadingProgress: data.code_reading_progress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
     homeFeatureOrder: Array.isArray(data.home_feature_order) ? data.home_feature_order : DEFAULT_FEATURE_ORDER,
@@ -103,6 +110,9 @@ export const saveCloudUserData = async (stateData) => {
         expenseCategories: stateData.expenseCategories || DEFAULT_EXPENSE_CATEGORIES,
         incomeCategories: stateData.incomeCategories || DEFAULT_INCOME_CATEGORIES,
         recurringTransactions: stateData.recurringTransactions || [],
+        learnedSentences: stateData.learnedSentences || [],
+        favSentences: stateData.favSentences || [],
+        sentenceLanguage: stateData.sentenceLanguage || 'zh',
       },
       streak_data: stateData.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 },
       code_reading_progress: stateData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 },

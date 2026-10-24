@@ -19,6 +19,7 @@ const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const MorePage = lazy(() => import('../pages/MorePage'));
 const PomodoroPage = lazy(() => import('../pages/PomodoroPage'));
 const FootballPage = lazy(() => import('../pages/FootballPage'));
+const SentenceLearningPage = lazy(() => import('../pages/SentenceLearningPage'));
 
 const pageVariants = {
   initial: { opacity: 0, x: 20 },
@@ -110,6 +111,7 @@ export default function AppRouter() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/more" element={<MorePage />} />
                   <Route path="/flashcard" element={<FlashcardPage />} />
+                  <Route path="/sentences" element={<SentenceLearningPage />} />
                   <Route path="/todo" element={<TodoPage />} />
                   <Route path="/habit" element={<HabitPage />} />
                   <Route path="/finance" element={<FinancePage />} />

@@ -17,7 +17,8 @@ import {
   Code,
   Settings,
   LayoutGrid,
-  Trophy
+  Trophy,
+  MessageSquareQuote
 } from 'lucide-react';
 
 const StatCard = ({ label, value, icon: Icon, color, to }) => {
@@ -77,7 +78,7 @@ const GridFeatureCard = ({ title, desc, icon: Icon, color, to, badge }) => {
 
 export default function HomePage() {
   const storeData = useStore();
-  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns, footballMatches } = storeData;
+  const { todos, habits, finance, goals, learnedCards, vocabulary, notes, projects, countdowns, footballMatches, learnedSentences } = storeData;
   const todayStr = new Date().toISOString().split('T')[0];
 
   const activeTodos = todos.filter(t => !t.completed).length;
@@ -88,6 +89,7 @@ export default function HomePage() {
   const learnedPct = vocabulary.length > 0 ? Math.round((learnedCards.length / vocabulary.length) * 100) : 0;
 
   const FEATURES = [
+    { id: 'sentences', title: "พูดจากประโยค", getDesc: () => `${learnedSentences?.length || 0} ประโยค (จีน/อังกฤษ)`, icon: MessageSquareQuote, color: "bg-rose-500", to: "/sentences", getBadge: () => (learnedSentences?.length > 0 ? learnedSentences.length : undefined) },
     { id: 'flashcard', title: "Flashcards", getDesc: () => `${learnedCards.length}/${vocabulary.length} คำ`, icon: BookOpen, color: "bg-blue-500", to: "/flashcard", getBadge: () => learnedCards.length },
     { id: 'todo', title: "To-Do List", getDesc: () => `${activeTodos} งานค้าง`, icon: CheckSquare, color: "bg-emerald-500", to: "/todo", getBadge: () => activeTodos },
     { id: 'habit', title: "Habit Tracker", getDesc: () => `${habitsToday}/${habits.length} วันนี้`, icon: Flame, color: "bg-orange-500", to: "/habit", getBadge: () => habitsToday },

@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Trash2, Check, X, Calendar, Trophy, Users, Clock, Edit2, Sparkles, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Check, X, Calendar, Trophy, Clock, Edit2, Sparkles, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 import { fetchFootballSchedule } from '../services/geminiService';
 
 export default function FootballPage() {
   const navigate = useNavigate();
-  const matches = useStore(state => state.footballMatches) || [];
+  const rawMatches = useStore(state => state.footballMatches);
+  const matches = useMemo(() => rawMatches || [], [rawMatches]);
   const addMatch = useStore(state => state.addFootballMatch);
   const editMatch = useStore(state => state.editFootballMatch);
   const deleteMatch = useStore(state => state.deleteFootballMatch);

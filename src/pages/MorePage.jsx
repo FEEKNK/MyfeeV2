@@ -13,12 +13,14 @@ import {
   Wind,
   Settings,
   ChevronRight,
+  MessageSquareQuote,
 } from 'lucide-react';
 
 const CATEGORIES = [
   {
     title: 'การเรียนรู้และพัฒนาตนเอง',
     items: [
+      { title: 'ฝึกพูดจากประโยค (Sentence Flow)', desc: 'จีน & อังกฤษ แบบ Chunking ไม่ต้องคิดแปล', icon: MessageSquareQuote, color: 'from-rose-500 to-pink-600', to: '/sentences' },
       { title: 'Flashcards', desc: 'คำศัพท์ Oxford 3000', icon: BookOpen, color: 'from-blue-500 to-indigo-600', to: '/flashcard' },
       { title: 'ทดสอบคำศัพท์ (Quiz)', desc: 'ฝึกจำ ฟัง และสะกดคำ', icon: HelpCircle, color: 'from-fuchsia-500 to-pink-600', to: '/quiz' },
       { title: 'ฝึกอ่านโค้ด (Code Reading)', desc: 'HTML, CSS, JS, SQL', icon: Code, color: 'from-cyan-500 to-blue-600', to: '/code-reading' },

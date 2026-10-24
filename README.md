@@ -86,23 +86,23 @@ MyFeeV2/
 ├── public/                  # Static assets (logo, icons)
 ├── src/
 │   ├── components/          # Reusable UI components
+│   │   ├── AiAnalysisModal.jsx  # AI spending advisor modal
 │   │   ├── AuthModal.jsx        # Authentication modal
 │   │   ├── ChangePinModal.jsx   # PIN change modal
-│   │   ├── PinLockScreen.jsx    # App lock screen
-│   │   ├── DataMigration.jsx    # Import/export data
-│   │   ├── FlashcardWidget.jsx  # Flashcard widget
-│   │   └── TodoWidget.jsx       # Todo widget
+│   │   └── PinLockScreen.jsx    # App lock screen
 │   ├── data/                # Static data & seed data
+│   │   ├── codeReadingData.js   # Code reading practice questions
 │   │   ├── vocabulary.js        # Oxford 3000 word list
 │   │   └── seedData.js          # Initial app data
 │   ├── lib/                 # Library configurations
 │   │   └── supabase.js          # Supabase client setup
-│   ├── pages/               # Page components (15 pages)
+│   ├── pages/               # Page components (16 pages)
 │   │   ├── HomePage.jsx         # Dashboard with grid menu
 │   │   ├── FlashcardPage.jsx    # Vocabulary flashcards
 │   │   ├── TodoPage.jsx         # To-do list
 │   │   ├── HabitPage.jsx        # Habit tracker
 │   │   ├── FinancePage.jsx      # Income & expense
+│   │   ├── FootballPage.jsx     # Thai football schedule & AI update
 │   │   ├── GoalsPage.jsx        # Savings goals
 │   │   ├── NotesPage.jsx        # Notes & diary
 │   │   ├── ProjectsPage.jsx     # Project management
@@ -116,11 +116,11 @@ MyFeeV2/
 │   ├── router/              # Route configuration
 │   │   └── AppRouter.jsx        # App routing & navigation
 │   ├── services/            # API services
+│   │   ├── geminiService.js     # Google Gemini AI services
 │   │   └── supabaseSync.js      # Cloud sync logic
 │   ├── store/               # Global state
 │   │   └── useStore.js          # Zustand store
 │   ├── App.jsx              # Root component
-│   ├── App.css              # App-level styles
 │   ├── index.css            # Global styles & theme
 │   └── main.jsx             # Entry point
 ├── supabase_schema.sql      # Database schema for Supabase
