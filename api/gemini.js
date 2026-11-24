@@ -72,6 +72,10 @@ async function verifySupabaseToken(authHeader, env) {
   const supabaseUrl = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').trim();
   const supabaseKey = (env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
   if (!supabaseUrl || !supabaseKey) {
+    // Fail closed: if the owner configured an allowlist, auth can never be skipped.
+    if (parseAllowedEmails(env.ALLOWED_EMAILS).size > 0) {
+      return { ok: false, status: 503, error: 'เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า Supabase สำหรับตรวจสอบสิทธิ์' };
+    }
     return { ok: true, skipped: true };
   }
 
