@@ -4,140 +4,188 @@ import { ArrowLeft, Volume2, Trophy, CheckCircle2, XCircle, BookOpen } from 'luc
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 
-function buildQuiz(filteredVocab, learnedCards, testLearnedOnly, autoPlay) {
-  const dataPool = testLearnedOnly 
-    ? filteredVocab.filter(w => learnedCards.includes(w.id))
+function fisherYatesShuffle(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function buildQuiz(filteredVocab, learnedCards, testLearnedOnly, previousCorrectId = null, nonce = 0) {
+  const dataPool = testLearnedOnly
+    ? filteredVocab.filter((w) => learnedCards.includes(w.id))
     : filteredVocab;
 
   if (dataPool.length === 0) {
     return { error: testLearnedOnly ? 'ยังไม่มีคำศัพท์ที่จำได้ในหมวดนี้' : 'ไม่มีคำศัพท์ในหมวดนี้' };
   }
 
-  const correct = dataPool[Math.floor(Math.random() * dataPool.length)];
+  const nonRepeatingPool = dataPool.length > 1
+    ? dataPool.filter((w) => w.id !== previousCorrectId)
+    : dataPool;
+  const pickPool = nonRepeatingPool.length > 0 ? nonRepeatingPool : dataPool;
+  const correct = pickPool[Math.floor(Math.random() * pickPool.length)];
   const type = Math.floor(Math.random() * 3); // 0: Meaning, 1: Listening, 2: Spelling
 
-  if (type === 1 && autoPlay && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    const u = new SpeechSynthesisUtterance(correct.word);
-    u.lang = 'en-US';
-    window.speechSynthesis.speak(u);
-  }
-
   if (type === 2) {
-    return { type, correct, options: [] };
+    return { type, correct, options: [], nonce };
   }
 
   const distractors = [];
   const maxDistractors = Math.min(3, filteredVocab.length - 1);
   let attempts = 0;
-  while (distractors.length < maxDistractors && attempts < 50) {
+  while (distractors.length < maxDistractors && attempts < 60) {
     attempts++;
     const r = filteredVocab[Math.floor(Math.random() * filteredVocab.length)];
-    if (r.id !== correct.id && !distractors.some(d => d.id === r.id)) distractors.push(r);
+    if (r.id !== correct.id && !distractors.some((d) => d.id === r.id)) {
+      distractors.push(r);
+    }
   }
-  const options = [correct, ...distractors].sort(() => Math.random() - 0.5);
-  return { type, correct, options };
+  const options = fisherYatesShuffle([correct, ...distractors]);
+  return { type, correct, options, nonce };
 }
 
 export default function QuizPage() {
   const navigate = useNavigate();
-  const { vocabulary, flashcardFilter, markLearned, settings, learnedCards } = useStore();
+  const {
+    vocabulary,
+    vocabularyLoaded,
+    loadVocabulary,
+    flashcardFilter,
+    markLearned,
+    settings,
+    learnedCards,
+  } = useStore();
+
   const [score, setScore] = useState(0);
   const [inputVal, setInputVal] = useState('');
   const [feedback, setFeedback] = useState(null); // 'correct' | 'wrong' | null
-  const [testLearnedOnly, setTestLearnedOnly] = useState(true); // Default to test learned words
+  const [testLearnedOnly, setTestLearnedOnly] = useState(true);
+  const [quizState, setQuizState] = useState(null);
   const inputRef = useRef(null);
   const timeoutRef = useRef(null);
-
-  const filteredVocab = useMemo(() => {
-    return flashcardFilter === 'All' 
-      ? vocabulary 
-      : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
-  }, [flashcardFilter, vocabulary]);
-
-  const [quizState, setQuizState] = useState(() => 
-    buildQuiz(
-      flashcardFilter === 'All' ? vocabulary : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter)),
-      learnedCards,
-      true,
-      settings.autoPlay
-    )
-  );
-
-  const [prevFilterKey, setPrevFilterKey] = useState(`${flashcardFilter}_${testLearnedOnly}`);
-  const currentFilterKey = `${flashcardFilter}_${testLearnedOnly}`;
-  if (prevFilterKey !== currentFilterKey) {
-    setPrevFilterKey(currentFilterKey);
-    setFeedback(null);
-    setInputVal('');
-    setQuizState(buildQuiz(filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay));
-  }
-
-  const generateQuiz = useCallback(() => {
-    setFeedback(null);
-    setInputVal('');
-    setQuizState(buildQuiz(filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay));
-  }, [filteredVocab, learnedCards, testLearnedOnly, settings.autoPlay]);
+  const focusTimerRef = useRef(null);
+  const nonceRef = useRef(0);
 
   useEffect(() => {
+    loadVocabulary();
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
     };
-  }, []);
+  }, [loadVocabulary]);
+
+  const filteredVocab = useMemo(() => {
+    return flashcardFilter === 'All'
+      ? vocabulary
+      : vocabulary.filter((w) => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
+  }, [flashcardFilter, vocabulary]);
+
+  const generateQuiz = useCallback((prevId = null) => {
+    nonceRef.current += 1;
+    setFeedback(null);
+    setInputVal('');
+    setQuizState(buildQuiz(filteredVocab, learnedCards, testLearnedOnly, prevId, nonceRef.current));
+  }, [filteredVocab, learnedCards, testLearnedOnly]);
+
+  useEffect(() => {
+    if (!vocabularyLoaded) return;
+    generateQuiz(null);
+    // Re-generate only when vocabulary loads or filter/mode toggles
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vocabularyLoaded, flashcardFilter, testLearnedOnly]);
+
+  // Auto-play audio in Listening mode cleanly inside useEffect (not during render)
+  useEffect(() => {
+    if (
+      quizState &&
+      !quizState.error &&
+      quizState.type === 1 &&
+      settings.autoPlay &&
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window
+    ) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(quizState.correct.word);
+      u.lang = 'en-US';
+      window.speechSynthesis.speak(u);
+    }
+  }, [quizState, settings.autoPlay]);
 
   const handleAnswer = (answer) => {
-    if (feedback !== null) return;
-    
+    if (feedback !== null || !quizState || quizState.error) return;
+
     let isCorrect = false;
     if (quizState.type === 2) {
-      isCorrect = answer.toLowerCase().trim() === quizState.correct.word.toLowerCase();
+      isCorrect = String(answer).toLowerCase().trim() === quizState.correct.word.toLowerCase();
     } else {
       isCorrect = answer.id === quizState.correct.id;
     }
 
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (isCorrect) {
-      setScore(s => s + 1);
+      setScore((s) => s + 1);
       setFeedback('correct');
       if (!testLearnedOnly) markLearned(quizState.correct.id);
-      timeoutRef.current = setTimeout(generateQuiz, 1000);
+      timeoutRef.current = setTimeout(() => generateQuiz(quizState.correct.id), 1000);
     } else {
       setFeedback('wrong');
-      // Wait longer before next question so user can see the correct answer
       timeoutRef.current = setTimeout(() => {
         setFeedback(null);
         if (quizState.type === 2) {
           setInputVal('');
-          setTimeout(() => inputRef.current?.focus(), 100);
+          focusTimerRef.current = setTimeout(() => inputRef.current?.focus(), 100);
         } else {
-            generateQuiz();
+          generateQuiz(quizState.correct.id);
         }
       }, 3000);
     }
   };
 
   const playSound = () => {
-    if (quizState?.correct) {
+    if (quizState?.correct && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(quizState.correct.word);
       u.lang = 'en-US';
       window.speechSynthesis.speak(u);
     }
   };
 
-  if (!quizState) return null;
+  if (!vocabularyLoaded || !quizState) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-3" role="status" aria-live="polite">
+        <div className="w-8 h-8 rounded-full border-2 border-fuchsia-400 border-t-transparent animate-spin" aria-hidden="true" />
+        <span className="text-xs text-gray-400 font-medium">กำลังเตรียมแบบทดสอบ...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate('/')}
-          className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert">
+        <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
+          whileTap={{ scale: 0.9 }}
+          onClick={() => navigate('/')}
+          className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert"
+        >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
-        
+
         <div className="flex items-center gap-2 bg-blue-500/20 border border-blue-500/30 text-blue-400 px-4 py-1.5 rounded-full font-bold">
           <Trophy className="w-4 h-4" /> Score: {score}
         </div>
 
-        <motion.button 
-          whileTap={{ scale: 0.9 }} 
+        <motion.button
+          type="button"
+          aria-label={testLearnedOnly ? 'ทดสอบเฉพาะคำที่จำได้' : 'ทดสอบคำศัพท์ทั้งหมด'}
+          whileTap={{ scale: 0.9 }}
           onClick={() => setTestLearnedOnly(!testLearnedOnly)}
           className={`p-2.5 rounded-xl border transition-colors ${testLearnedOnly ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'glass border-white/10 text-gray-400'}`}
           title={testLearnedOnly ? 'Testing Learned Words' : 'Testing All Words'}
@@ -151,7 +199,8 @@ export default function QuizPage() {
           <div className="text-center text-gray-400 p-8 glass rounded-2xl">
             <p className="text-lg">{quizState.error}</p>
             {testLearnedOnly && (
-              <button 
+              <button
+                type="button"
                 onClick={() => setTestLearnedOnly(false)}
                 className="mt-4 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-xl"
               >
@@ -162,8 +211,8 @@ export default function QuizPage() {
         ) : (
           <>
             <AnimatePresence mode="wait">
-              <motion.div 
-                key={quizState.correct.id + quizState.type}
+              <motion.div
+                key={`${quizState.correct.id}-${quizState.type}-${quizState.nonce}`}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -40 }}
@@ -172,10 +221,15 @@ export default function QuizPage() {
                 {quizState.type === 0 && (
                   <h2 className="text-4xl font-black text-white dark-invert mb-2">{quizState.correct.word}</h2>
                 )}
-                
+
                 {quizState.type === 1 && (
                   <div className="flex flex-col items-center gap-4">
-                    <button onClick={playSound} className="p-6 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/20">
+                    <button
+                      type="button"
+                      aria-label="ฟังเสียงคำศัพท์"
+                      onClick={playSound}
+                      className="p-6 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/20"
+                    >
                       <Volume2 className="w-12 h-12" />
                     </button>
                     <h2 className="text-2xl font-bold text-gray-300">ฟังแล้วเลือกคำแปล</h2>
@@ -192,19 +246,20 @@ export default function QuizPage() {
             </AnimatePresence>
 
             <div className="w-full max-w-sm space-y-3 relative z-10">
-              {(quizState.type === 0 || quizState.type === 1) ? (
-                quizState.options.map(opt => {
+              {quizState.type === 0 || quizState.type === 1 ? (
+                quizState.options.map((opt) => {
                   const isCorrectAnswer = feedback === 'wrong' && opt.id === quizState.correct.id;
-                  
+
                   return (
-                    <motion.button 
+                    <motion.button
                       key={opt.id}
+                      type="button"
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleAnswer(opt)}
                       disabled={feedback !== null}
                       className={`w-full p-4 rounded-2xl border text-lg font-bold transition-all
-                        ${isCorrectAnswer ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 scale-105 shadow-[0_0_15px_rgba(52,211,153,0.3)]' 
-                        : feedback === 'wrong' ? 'border-red-500/50 bg-red-500/10 text-red-400 opacity-50' 
+                        ${isCorrectAnswer ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 scale-105 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                        : feedback === 'wrong' ? 'border-red-500/50 bg-red-500/10 text-red-400 opacity-50'
                         : 'glass border-white/10 text-white dark-invert hover:bg-white/10'}`}
                     >
                       {quizState.type === 0 ? opt.thai : opt.word}
@@ -212,20 +267,20 @@ export default function QuizPage() {
                   );
                 })
               ) : (
-                <form onSubmit={e => { e.preventDefault(); handleAnswer(inputVal); }} className="w-full flex flex-col gap-4">
-                  <motion.input 
+                <form onSubmit={(e) => { e.preventDefault(); handleAnswer(inputVal); }} className="w-full flex flex-col gap-4">
+                  <motion.input
                     ref={inputRef}
                     animate={feedback === 'wrong' ? { x: [-10, 10, -10, 10, 0] } : {}}
                     transition={{ duration: 0.4 }}
                     value={inputVal}
-                    onChange={e => setInputVal(e.target.value)}
+                    onChange={(e) => setInputVal(e.target.value)}
                     disabled={feedback !== null}
                     placeholder="Type here..."
                     className={`w-full text-center text-2xl p-4 rounded-2xl glass-dark border outline-none transition-colors
                       ${feedback === 'wrong' ? 'border-red-500/50 text-red-400' : feedback === 'correct' ? 'border-emerald-500/50 text-emerald-400' : 'border-white/10 text-white dark-invert focus:border-blue-500/50'}`}
                   />
                   {feedback === 'wrong' && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="text-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30"
@@ -234,7 +289,11 @@ export default function QuizPage() {
                       <p className="text-xl text-emerald-400 font-black">{quizState.correct.word}</p>
                     </motion.div>
                   )}
-                  <button type="submit" disabled={feedback !== null} className="w-full py-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl shadow-lg transition-colors">
+                  <button
+                    type="submit"
+                    disabled={feedback !== null}
+                    className="w-full py-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-bold rounded-2xl shadow-lg transition-colors"
+                  >
                     ตรวจคำตอบ
                   </button>
                 </form>
@@ -243,11 +302,10 @@ export default function QuizPage() {
           </>
         )}
       </div>
-      
-      {/* Feedback Overlay - Reduced scale to be less intrusive when showing answers */}
+
       <AnimatePresence>
         {feedback && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.5, y: -50 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 1.5 }}
@@ -264,4 +322,3 @@ export default function QuizPage() {
     </div>
   );
 }
-

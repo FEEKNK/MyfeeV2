@@ -1,50 +1,55 @@
 -- ================================================================
--- MyFee V2 - Supabase Database Schema (Single-User Cloud Sync / No Login)
+-- MyFee V2 - Supabase Database Schema (Per-User Authenticated Cloud Sync)
 -- Run this script in the Supabase SQL Editor (https://supabase.com/dashboard)
 -- ================================================================
 
--- 1. Create table for Single-User synchronization data
+-- 1. Create table for per-user synchronization data
 CREATE TABLE IF NOT EXISTS public.app_sync_data (
-    id TEXT PRIMARY KEY DEFAULT 'single_user',
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
     learned_cards JSONB DEFAULT '[]'::jsonb,
     fav_cards JSONB DEFAULT '[]'::jsonb,
+    learned_sentences JSONB DEFAULT '[]'::jsonb,
+    fav_sentences JSONB DEFAULT '[]'::jsonb,
     todos JSONB DEFAULT '[]'::jsonb,
     habits JSONB DEFAULT '[]'::jsonb,
     finance JSONB DEFAULT '[]'::jsonb,
+    recurring_transactions JSONB DEFAULT '[]'::jsonb,
     goals JSONB DEFAULT '[]'::jsonb,
     notes JSONB DEFAULT '[]'::jsonb,
     projects JSONB DEFAULT '[]'::jsonb,
     countdowns JSONB DEFAULT '[]'::jsonb,
     football_matches JSONB DEFAULT '[]'::jsonb,
-    -- app_settings also stores expenseCategories, incomeCategories, and recurringTransactions seamlessly
-    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": "3804", "isPinEnabled": true, "recurringTransactions": []}'::jsonb,
-    streak_data JSONB DEFAULT '{"count": 0, "lastDate": null, "cardsFlippedToday": 0}'::jsonb,
+    app_settings JSONB DEFAULT '{"darkMode": true, "autoPlay": true, "dailyBudget": 0, "monthlyBudget": 0, "pinCode": null, "isPinEnabled": false, "pinIsHashed": false}'::jsonb,
+    streak_data JSONB DEFAULT '{"count": 0, "lastDate": null, "lastActiveDate": null, "cardsFlippedToday": 0}'::jsonb,
+    pomodoro_stats JSONB DEFAULT '{"totalSessions": 0, "todaySessions": 0, "lastSessionDate": null}'::jsonb,
     code_reading_progress JSONB DEFAULT '{"mode": "code", "levelIndex": 0, "questionIndex": 0}'::jsonb,
-    home_feature_order JSONB DEFAULT '["flashcard", "todo", "habit", "finance", "goals", "notes", "projects", "pomodoro", "countdown", "breathing", "quiz", "code_reading", "settings"]'::jsonb,
+    home_feature_order JSONB DEFAULT '["sentences", "flashcard", "todo", "habit", "finance", "goals", "notes", "projects", "pomodoro", "countdown", "breathing", "quiz", "code_reading", "football", "settings"]'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Optional: If upgrading an existing database and you want to ensure default settings contain recurringTransactions
--- UPDATE public.app_sync_data SET app_settings = app_settings || '{"recurringTransactions": []}'::jsonb WHERE app_settings->'recurringTransactions' IS NULL;
+-- If upgrading from the legacy single_user schema (where primary key was `id TEXT`):
+-- ALTER TABLE public.app_sync_data ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid();
+-- ALTER TABLE public.app_sync_data ADD COLUMN IF NOT EXISTS learned_sentences JSONB DEFAULT '[]'::jsonb;
+-- ALTER TABLE public.app_sync_data ADD COLUMN IF NOT EXISTS fav_sentences JSONB DEFAULT '[]'::jsonb;
+-- ALTER TABLE public.app_sync_data ADD COLUMN IF NOT EXISTS recurring_transactions JSONB DEFAULT '[]'::jsonb;
+-- ALTER TABLE public.app_sync_data ADD COLUMN IF NOT EXISTS pomodoro_stats JSONB DEFAULT '{"totalSessions": 0, "todaySessions": 0, "lastSessionDate": null}'::jsonb;
 
 -- 2. Enable Row Level Security (RLS)
 ALTER TABLE public.app_sync_data ENABLE ROW LEVEL SECURITY;
 
--- 3. Create Public Policies allowing Anon / Authenticated clients to access single_user data
+-- 3. Remove any legacy public policies & enforce strict per-user RLS
 DROP POLICY IF EXISTS "Public access to app_sync_data" ON public.app_sync_data;
-CREATE POLICY "Public access to app_sync_data"
+DROP POLICY IF EXISTS "Users can access only their own sync data" ON public.app_sync_data;
+
+CREATE POLICY "Users can access only their own sync data"
     ON public.app_sync_data
     FOR ALL
-    USING (true)
-    WITH CHECK (true);
+    TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
--- 4. Insert initial row if not already present
-INSERT INTO public.app_sync_data (id)
-VALUES ('single_user')
-ON CONFLICT (id) DO NOTHING;
-
--- 5. Updated_at timestamp trigger
+-- 4. Updated_at timestamp trigger
 CREATE OR REPLACE FUNCTION public.update_app_sync_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -58,7 +63,7 @@ CREATE TRIGGER update_app_sync_data_timestamp
     BEFORE UPDATE ON public.app_sync_data
     FOR EACH ROW EXECUTE FUNCTION public.update_app_sync_timestamp();
 
--- 6. Enable Supabase Realtime for instant synchronization across devices
+-- 5. Enable Supabase Realtime for instant synchronization across devices
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -68,5 +73,3 @@ BEGIN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.app_sync_data;
     END IF;
 END $$;
-
--- Finished! Run this script once in the Supabase SQL Editor.

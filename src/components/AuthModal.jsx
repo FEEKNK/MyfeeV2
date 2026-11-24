@@ -1,28 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Cloud, Key, CheckCircle, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { supabase, isSupabaseConfigured, reinitSupabase } from '../lib/supabase';
 import useStore from '../store/useStore';
 
 export default function AuthModal({ isOpen, onClose }) {
-  const { user, setUser, syncCloudData, isSyncing } = useStore();
+  const { user, setUser, syncCloudData, initSync, resetLocalSessionData, isSyncing } = useStore();
   const [tab, setTab] = useState('login'); // 'login' | 'signup' | 'config'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [customUrl, setCustomUrl] = useState(localStorage.getItem('supabase_custom_url') || '');
-  const [customKey, setCustomKey] = useState(localStorage.getItem('supabase_custom_key') || '');
+  const [customUrl, setCustomUrl] = useState(() => localStorage.getItem('supabase_custom_url') || '');
+  const [customKey, setCustomKey] = useState(() => localStorage.getItem('supabase_custom_key') || '');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const timerRef = useRef(null);
 
   const isConfigured = isSupabaseConfigured();
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  const scheduleAction = (fn, delayMs) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      fn();
+    }, delayMs);
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
-    
-    if (!isConfigured) {
+
+    if (!isConfigured || !supabase) {
       setTab('config');
       setErrorMsg('กรุณาตั้งค่า Supabase URL และ Anon Key ก่อนเข้าสู่ระบบ');
       return;
@@ -38,30 +62,26 @@ export default function AuthModal({ isOpen, onClose }) {
       if (tab === 'signup') {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
-          password: password,
+          password,
         });
         if (error) throw error;
         if (data?.user) {
           setUser(data.user);
           setSuccessMsg('สมัครสมาชิกสำเร็จ! กำลังซิงค์ข้อมูล...');
           await syncCloudData();
-          setTimeout(() => {
-            onClose();
-          }, 1500);
+          scheduleAction(onClose, 1400);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
-          password: password,
+          password,
         });
         if (error) throw error;
         if (data?.user) {
           setUser(data.user);
           setSuccessMsg('เข้าสู่ระบบสำเร็จ! กำลังโหลดข้อมูล...');
           await syncCloudData();
-          setTimeout(() => {
-            onClose();
-          }, 1200);
+          scheduleAction(onClose, 1200);
         }
       }
     } catch (err) {
@@ -71,8 +91,10 @@ export default function AuthModal({ isOpen, onClose }) {
     }
   };
 
-  const handleSaveConfig = (e) => {
+  const handleSaveConfig = async (e) => {
     e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
     if (!customUrl.trim() || !customKey.trim()) {
       setErrorMsg('กรุณากรอกข้อมูล Supabase ให้ครบถ้วน');
       return;
@@ -80,24 +102,24 @@ export default function AuthModal({ isOpen, onClose }) {
     const success = reinitSupabase(customUrl, customKey);
     if (success) {
       setSuccessMsg('บันทึกการตั้งค่า Supabase สำเร็จ!');
-      setTimeout(() => {
+      await initSync();
+      scheduleAction(() => {
         setSuccessMsg('');
         setTab('login');
       }, 1000);
     } else {
-      setErrorMsg('URL หรือ Key ไม่ถูกต้อง (URL ต้องขึ้นต้นด้วย https://)');
+      setErrorMsg('URL หรือ Key ไม่ถูกต้อง (URL ต้องขึ้นต้นด้วย https:// และ Key ยาวเกิน 15 ตัวอักษร)');
     }
   };
 
   const handleSignOut = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       if (supabase) await supabase.auth.signOut();
-      setUser(null);
-      setSuccessMsg('ออกจากระบบเรียบร้อย');
-      setTimeout(() => {
-        onClose();
-      }, 1000);
+      resetLocalSessionData();
+      setSuccessMsg('ออกจากระบบและล้างข้อมูลเซสชันบนเครื่องเรียบร้อย');
+      scheduleAction(onClose, 1000);
     } catch (err) {
       setErrorMsg(err.message || 'เกิดข้อผิดพลาดในการออกจากระบบ');
     } finally {
@@ -109,8 +131,15 @@ export default function AuthModal({ isOpen, onClose }) {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        onClick={onClose}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+      >
         <motion.div
+          onClick={(e) => e.stopPropagation()}
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -122,6 +151,8 @@ export default function AuthModal({ isOpen, onClose }) {
 
           {/* Close Button */}
           <button
+            type="button"
+            aria-label="ปิดหน้าต่างบัญชีผู้ใช้"
             onClick={onClose}
             className="absolute top-4 right-4 p-2 rounded-xl text-gray-400 hover:text-white bg-white/5 border border-white/10 transition-colors"
           >
@@ -134,8 +165,8 @@ export default function AuthModal({ isOpen, onClose }) {
               <Cloud className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-white">Supabase Cloud</h2>
-              <p className="text-xs text-gray-400">ซิงค์ข้อมูล To-Do, นิสัย, การเงิน บนคลาวด์</p>
+              <h2 id="auth-modal-title" className="text-lg font-black text-white">Supabase Cloud</h2>
+              <p className="text-xs text-gray-400">ซิงค์ข้อมูล To-Do, นิสัย, การเงิน บนคลาวด์อย่างปลอดภัย</p>
             </div>
           </div>
 
@@ -154,11 +185,12 @@ export default function AuthModal({ isOpen, onClose }) {
 
               <div className="flex gap-2">
                 <motion.button
+                  type="button"
                   whileTap={{ scale: 0.96 }}
                   onClick={async () => {
                     await syncCloudData();
                     setSuccessMsg('ซิงค์ข้อมูลสำเร็จ! ⚡');
-                    setTimeout(() => setSuccessMsg(''), 2000);
+                    scheduleAction(() => setSuccessMsg(''), 2000);
                   }}
                   disabled={isSyncing}
                   className="flex-1 py-3 bg-blue-500/20 border border-blue-500/30 hover:bg-blue-500/30 text-blue-400 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors"
@@ -167,6 +199,7 @@ export default function AuthModal({ isOpen, onClose }) {
                   ซิงค์ข้อมูลทันที
                 </motion.button>
                 <motion.button
+                  type="button"
                   whileTap={{ scale: 0.96 }}
                   onClick={handleSignOut}
                   disabled={loading}
@@ -175,6 +208,9 @@ export default function AuthModal({ isOpen, onClose }) {
                   ออกจากระบบ
                 </motion.button>
               </div>
+              <p className="text-[11px] text-gray-500 text-center">
+                การออกจากระบบจะล้างแคชข้อมูลส่วนตัวบนเครื่องนี้เพื่อความเป็นส่วนตัว
+              </p>
             </div>
           ) : (
             <>
@@ -215,7 +251,11 @@ export default function AuthModal({ isOpen, onClose }) {
                   <Key className="w-4 h-4 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold">ยังไม่ได้เชื่อมต่อ Supabase Project:</span>{' '}
-                    สามารถใส่ URL & Key ในแท็บ <button onClick={() => setTab('config')} className="underline font-bold">ตั้งค่า API Key</button> หรือไฟล์ <code className="font-mono bg-black/40 px-1 rounded">.env</code>
+                    สามารถใส่ URL & Key ในแท็บ{' '}
+                    <button type="button" onClick={() => setTab('config')} className="underline font-bold">
+                      ตั้งค่า API Key
+                    </button>{' '}
+                    หรือไฟล์ <code className="font-mono bg-black/40 px-1 rounded">.env</code>
                   </div>
                 </div>
               )}
@@ -224,10 +264,11 @@ export default function AuthModal({ isOpen, onClose }) {
               {tab === 'login' || tab === 'signup' ? (
                 <form onSubmit={handleAuth} className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">อีเมล</label>
+                    <label htmlFor="auth-email" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">อีเมล</label>
                     <div className="relative">
                       <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                       <input
+                        id="auth-email"
                         type="email"
                         required
                         value={email}
@@ -239,12 +280,14 @@ export default function AuthModal({ isOpen, onClose }) {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">รหัสผ่าน</label>
+                    <label htmlFor="auth-password" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">รหัสผ่าน</label>
                     <div className="relative">
                       <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                       <input
+                        id="auth-password"
                         type="password"
                         required
+                        minLength={6}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
@@ -270,23 +313,24 @@ export default function AuthModal({ isOpen, onClose }) {
                   </motion.button>
                 </form>
               ) : (
-                /* Config Form */
                 <form onSubmit={handleSaveConfig} className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Supabase Project URL</label>
+                    <label htmlFor="supabase-url" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Supabase Project URL</label>
                     <input
+                      id="supabase-url"
                       type="url"
                       required
                       value={customUrl}
                       onChange={(e) => setCustomUrl(e.target.value)}
                       placeholder="https://xyzcompany.supabase.co"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors font-mono text-xs"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white placeholder-gray-500 outline-none focus:border-blue-500/50 transition-colors font-mono text-xs"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Supabase Anon Public Key</label>
+                    <label htmlFor="supabase-key" className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Supabase Anon Public Key</label>
                     <textarea
+                      id="supabase-key"
                       rows={2}
                       required
                       value={customKey}

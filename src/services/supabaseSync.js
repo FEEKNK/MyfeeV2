@@ -1,27 +1,28 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
+  DEFAULT_FEATURE_ORDER,
+} from '../constants/appConstants';
 
-const DEFAULT_EXPENSE_CATEGORIES = ['อาหาร', 'เดินทาง', 'ช้อปปิ้ง', 'ความบันเทิง', 'สุขภาพ', 'บิล', 'อื่นๆ'];
-const DEFAULT_INCOME_CATEGORIES = ['เงินเดือน/รายได้', 'ฟรีแลนซ์', 'ลงทุน', 'อื่นๆ'];
-const DEFAULT_FEATURE_ORDER = [
-  'flashcard', 'todo', 'habit', 'finance', 'goals', 'notes', 
-  'projects', 'pomodoro', 'countdown', 'breathing', 'quiz', 'code_reading', 'settings'
-];
-
-export const SINGLE_USER_ID = 'single_user';
+const DEFAULT_POMODORO_STATS = { totalSessions: 0, todaySessions: 0, lastSessionDate: null };
 
 /**
- * Helper to parse raw database record into store shape
+ * Helper to parse raw database record into store shape.
  */
 export const parseCloudData = (data) => {
   if (!data) return null;
 
-  const appSettings = data.app_settings || {
-    darkMode: true,
-    autoPlay: true,
-    dailyBudget: 0,
-    monthlyBudget: 0,
-    pinCode: '3804',
-    isPinEnabled: true,
+  const rawSettings = data.app_settings || {};
+  const appSettings = {
+    darkMode: rawSettings.darkMode !== undefined ? Boolean(rawSettings.darkMode) : true,
+    autoPlay: rawSettings.autoPlay !== undefined ? Boolean(rawSettings.autoPlay) : true,
+    dailyBudget: Number.isFinite(Number(rawSettings.dailyBudget)) ? Math.max(0, Number(rawSettings.dailyBudget)) : 0,
+    monthlyBudget: Number.isFinite(Number(rawSettings.monthlyBudget)) ? Math.max(0, Number(rawSettings.monthlyBudget)) : 0,
+    pinCode: typeof rawSettings.pinCode === 'string' ? rawSettings.pinCode : null,
+    isPinEnabled: Boolean(rawSettings.isPinEnabled && rawSettings.pinCode),
+    pinIsHashed: Boolean(rawSettings.pinIsHashed),
+    lastBackupDate: rawSettings.lastBackupDate || null,
   };
 
   return {
@@ -30,52 +31,56 @@ export const parseCloudData = (data) => {
     todos: Array.isArray(data.todos) ? data.todos : [],
     habits: Array.isArray(data.habits) ? data.habits : [],
     finance: Array.isArray(data.finance) ? data.finance : [],
-    expenseCategories: Array.isArray(appSettings.expenseCategories) ? appSettings.expenseCategories : DEFAULT_EXPENSE_CATEGORIES,
-    incomeCategories: Array.isArray(appSettings.incomeCategories) ? appSettings.incomeCategories : DEFAULT_INCOME_CATEGORIES,
-    recurringTransactions: Array.isArray(data.recurring_transactions) 
-      ? data.recurring_transactions 
-      : (Array.isArray(appSettings.recurringTransactions) ? appSettings.recurringTransactions : []),
+    expenseCategories: Array.isArray(rawSettings.expenseCategories)
+      ? rawSettings.expenseCategories
+      : DEFAULT_EXPENSE_CATEGORIES,
+    incomeCategories: Array.isArray(rawSettings.incomeCategories)
+      ? rawSettings.incomeCategories
+      : DEFAULT_INCOME_CATEGORIES,
+    recurringTransactions: Array.isArray(data.recurring_transactions)
+      ? data.recurring_transactions
+      : (Array.isArray(rawSettings.recurringTransactions) ? rawSettings.recurringTransactions : []),
     goals: Array.isArray(data.goals) ? data.goals : [],
     notes: Array.isArray(data.notes) ? data.notes : [],
     projects: Array.isArray(data.projects) ? data.projects : [],
     countdowns: Array.isArray(data.countdowns) ? data.countdowns : [],
     footballMatches: Array.isArray(data.football_matches) ? data.football_matches : [],
     settings: appSettings,
-    learnedSentences: Array.isArray(data.learned_sentences) 
-      ? data.learned_sentences 
-      : (Array.isArray(appSettings.learnedSentences) ? appSettings.learnedSentences : []),
+    learnedSentences: Array.isArray(data.learned_sentences)
+      ? data.learned_sentences
+      : (Array.isArray(rawSettings.learnedSentences) ? rawSettings.learnedSentences : []),
     favSentences: Array.isArray(data.fav_sentences)
       ? data.fav_sentences
-      : (Array.isArray(appSettings.favSentences) ? appSettings.favSentences : []),
-    sentenceLanguage: appSettings.sentenceLanguage || 'zh',
-    streak: data.streak_data || { count: 0, lastDate: null, cardsFlippedToday: 0 },
+      : (Array.isArray(rawSettings.favSentences) ? rawSettings.favSentences : []),
+    sentenceLanguage: rawSettings.sentenceLanguage || 'zh',
+    streak: data.streak_data || { count: 0, lastDate: null, lastActiveDate: null, cardsFlippedToday: 0 },
+    pomodoroStats: data.pomodoro_stats || rawSettings.pomodoroStats || DEFAULT_POMODORO_STATS,
     codeReadingProgress: data.code_reading_progress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
     homeFeatureOrder: Array.isArray(data.home_feature_order) ? data.home_feature_order : DEFAULT_FEATURE_ORDER,
-    updatedAt: data.updated_at,
+    updatedAt: data.updated_at || null,
   };
 };
 
 /**
- * Fetch all sync data from Supabase (Single-User Mode / No Login)
+ * Fetch authenticated user's sync data from Supabase.
  */
-export const fetchCloudUserData = async () => {
+export const fetchCloudUserData = async (userId) => {
   if (!isSupabaseConfigured() || !supabase) {
     return { data: null, error: new Error('Supabase not configured') };
   }
+  if (!userId) {
+    return { data: null, error: new Error('User not authenticated') };
+  }
 
   try {
-    // 1. Try fetching from public app_sync_data
     const { data, error } = await supabase
       .from('app_sync_data')
       .select('*')
-      .eq('id', SINGLE_USER_ID)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) throw error;
-
-    if (!data) {
-      return { data: null, error: null };
-    }
+    if (!data) return { data: null, error: null };
 
     return { data: parseCloudData(data), error: null };
   } catch (err) {
@@ -85,21 +90,27 @@ export const fetchCloudUserData = async () => {
 };
 
 /**
- * Save / Upsert user state into Supabase (Single-User Mode / No Login)
+ * Save / Upsert authenticated user's state into Supabase with server timestamp tracking.
  */
-export const saveCloudUserData = async (stateData) => {
+export const saveCloudUserData = async (stateData, userId, expectedUpdatedAt = null) => {
   if (!isSupabaseConfigured() || !supabase) {
-    return { success: false, error: new Error('Supabase not configured') };
+    return { success: false, conflict: false, updatedAt: null, error: new Error('Supabase not configured') };
+  }
+  if (!userId) {
+    return { success: false, conflict: false, updatedAt: null, error: new Error('User not authenticated') };
   }
 
   try {
     const payload = {
-      id: SINGLE_USER_ID,
+      user_id: userId,
       learned_cards: stateData.learnedCards || [],
       fav_cards: stateData.favCards || [],
+      learned_sentences: stateData.learnedSentences || [],
+      fav_sentences: stateData.favSentences || [],
       todos: stateData.todos || [],
       habits: stateData.habits || [],
       finance: stateData.finance || [],
+      recurring_transactions: stateData.recurringTransactions || [],
       goals: stateData.goals || [],
       notes: stateData.notes || [],
       projects: stateData.projects || [],
@@ -113,41 +124,59 @@ export const saveCloudUserData = async (stateData) => {
         learnedSentences: stateData.learnedSentences || [],
         favSentences: stateData.favSentences || [],
         sentenceLanguage: stateData.sentenceLanguage || 'zh',
+        pomodoroStats: stateData.pomodoroStats || DEFAULT_POMODORO_STATS,
       },
-      streak_data: stateData.streak || { count: 0, lastDate: null, cardsFlippedToday: 0 },
+      streak_data: stateData.streak || { count: 0, lastDate: null, lastActiveDate: null, cardsFlippedToday: 0 },
+      pomodoro_stats: stateData.pomodoroStats || DEFAULT_POMODORO_STATS,
       code_reading_progress: stateData.codeReadingProgress || { mode: 'code', levelIndex: 0, questionIndex: 0 },
       home_feature_order: stateData.homeFeatureOrder || DEFAULT_FEATURE_ORDER,
-      updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
+    if (expectedUpdatedAt) {
+      const { data: updatedRows, error } = await supabase
+        .from('app_sync_data')
+        .update(payload)
+        .eq('user_id', userId)
+        .eq('updated_at', expectedUpdatedAt)
+        .select('updated_at');
+
+      if (error) throw error;
+      if (!updatedRows || updatedRows.length === 0) {
+        return { success: false, conflict: true, updatedAt: null, error: null };
+      }
+      return { success: true, conflict: false, updatedAt: updatedRows[0].updated_at || null, error: null };
+    }
+
+    const { data: upsertedRow, error } = await supabase
       .from('app_sync_data')
-      .upsert(payload, { onConflict: 'id' });
+      .upsert(payload, { onConflict: 'user_id' })
+      .select('updated_at')
+      .maybeSingle();
 
     if (error) throw error;
-    return { success: true, error: null };
+    return { success: true, conflict: false, updatedAt: upsertedRow?.updated_at || null, error: null };
   } catch (err) {
     console.error('Error saving cloud data:', err);
-    return { success: false, error: err };
+    return { success: false, conflict: false, updatedAt: null, error: err };
   }
 };
 
 /**
- * Subscribe to realtime updates from other devices (e.g. phone -> computer)
+ * Subscribe to realtime updates for the authenticated user across devices.
  */
-export const subscribeToCloudChanges = (onUpdate) => {
-  if (!isSupabaseConfigured() || !supabase) return () => {};
+export const subscribeToCloudChanges = (userId, onUpdate) => {
+  if (!isSupabaseConfigured() || !supabase || !userId) return () => {};
 
   try {
     const channel = supabase
-      .channel(`app_sync_data_${Date.now()}`)
+      .channel(`app_sync_data_${userId}_${Date.now()}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'app_sync_data',
-          filter: `id=eq.${SINGLE_USER_ID}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           if (payload.new) {

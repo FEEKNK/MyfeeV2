@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Wind, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -24,63 +24,66 @@ export default function BreathingPage() {
   const [recoverySecs, setRecoverySecs] = useState(15);
   const timerRef = useRef(null);
 
-  const clearTimer = () => { if (timerRef.current) clearInterval(timerRef.current); };
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
-  // Breathing phase
   useEffect(() => {
     if (phase === PHASES.BREATHING) {
+      let tickInhale = true;
+      let count = 0;
       timerRef.current = setInterval(() => {
-        setInhale(prev => {
-          if (!prev) {
-            setBreathCount(bc => {
-              const next = bc + 1;
-              if (next >= MAX_BREATHS) {
-                clearTimer();
-                setRetentionSecs(0);
-                setPhase(PHASES.RETENTION);
-                return 0;
-              }
-              return next;
-            });
-          }
-          return !prev;
-        });
-      }, 1400);
-    }
-    return clearTimer;
-  }, [phase]);
-
-  // Retention phase timer
-  useEffect(() => {
-    if (phase === PHASES.RETENTION) {
-      timerRef.current = setInterval(() => {
-        setRetentionSecs(s => s + 1);
-      }, 1000);
-    }
-    return clearTimer;
-  }, [phase]);
-
-  // Recovery phase timer
-  useEffect(() => {
-    if (phase === PHASES.RECOVERY) {
-      timerRef.current = setInterval(() => {
-        setRecoverySecs(s => {
-          if (s <= 1) {
+        tickInhale = !tickInhale;
+        setInhale(tickInhale);
+        if (tickInhale) {
+          count += 1;
+          if (count >= MAX_BREATHS) {
             clearTimer();
-            if (round >= MAX_ROUNDS) {
-              setPhase(PHASES.DONE);
-            } else {
-              setRound(r => r + 1);
-              setPhase(PHASES.INTRO);
-            }
-            return 0;
+            setBreathCount(0);
+            setRetentionSecs(0);
+            setPhase(PHASES.RETENTION);
+          } else {
+            setBreathCount(count);
           }
-          return s - 1;
-        });
-      }, 1000);
+        }
+      }, 1400);
+      return clearTimer;
     }
+
+    if (phase === PHASES.RETENTION) {
+      let secs = 0;
+      timerRef.current = setInterval(() => {
+        secs += 1;
+        setRetentionSecs(secs);
+      }, 1000);
+      return clearTimer;
+    }
+
+    if (phase === PHASES.RECOVERY) {
+      let remaining = 15;
+      timerRef.current = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearTimer();
+          setRecoverySecs(0);
+          if (round >= MAX_ROUNDS) {
+            setPhase(PHASES.DONE);
+          } else {
+            setRound((r) => r + 1);
+            setPhase(PHASES.INTRO);
+          }
+        } else {
+          setRecoverySecs(remaining);
+        }
+      }, 1000);
+      return clearTimer;
+    }
+
     return clearTimer;
-  }, [phase, round]);
+  }, [phase, round, clearTimer]);
 
   const startBreathing = () => {
     setBreathCount(0);
@@ -111,7 +114,7 @@ export default function BreathingPage() {
     if (phase === PHASES.BREATHING) return { icon: null, main: inhale ? 'หายใจเข้า' : 'หายใจออก', sub: `${breathCount} / ${MAX_BREATHS}` };
     if (phase === PHASES.RETENTION) return { icon: null, main: `${retentionSecs}s`, sub: 'กลั้นหายใจ' };
     if (phase === PHASES.RECOVERY) return { icon: null, main: `${recoverySecs}s`, sub: 'หายใจปกติ' };
-    if (phase === PHASES.DONE) return { icon: CheckCircle2, main: 'เสร็จสิ้น!', sub: 'สำเร็จ 3 รอบ' };
+    return { icon: CheckCircle2, main: 'เสร็จสิ้น!', sub: 'สำเร็จ 3 รอบ' };
   };
 
   const ct = centerText();
@@ -134,8 +137,13 @@ export default function BreathingPage() {
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => { clearTimer(); navigate('/'); }}
-          className="p-2.5 glass rounded-xl border border-white/10 text-white">
+        <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
+          whileTap={{ scale: 0.9 }}
+          onClick={() => { clearTimer(); navigate('/'); }}
+          className="p-2.5 glass rounded-xl border border-white/10 text-white"
+        >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="text-center">
@@ -145,24 +153,20 @@ export default function BreathingPage() {
         <div className="w-10" />
       </div>
 
-      {/* Round indicators */}
       <div className="flex gap-2 justify-center">
         {Array.from({ length: MAX_ROUNDS }, (_, i) => (
           <div key={i} className={`w-8 h-1.5 rounded-full transition-colors ${i < round ? 'bg-cyan-400' : 'bg-white/10'}`} />
         ))}
       </div>
 
-      {/* Main Circle */}
       <div className="flex-1 flex flex-col items-center justify-center gap-8">
         <div className="relative w-64 h-64 flex items-center justify-center">
-          {/* Outer pulse */}
           <motion.div
             className="absolute inset-0 rounded-full"
             style={{ backgroundColor: `${circleColor}20` }}
             animate={{ scale: circleScale * 1.15 }}
             transition={{ duration: 1.4, ease: 'easeInOut' }}
           />
-          {/* Main circle */}
           <motion.div
             className="w-48 h-48 rounded-full flex flex-col items-center justify-center border-4"
             style={{ borderColor: circleColor, backgroundColor: `${circleColor}15` }}
@@ -175,13 +179,16 @@ export default function BreathingPage() {
           </motion.div>
         </div>
 
-        <motion.button whileTap={{ scale: 0.95 }}
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.95 }}
           onClick={handleAction}
           disabled={phase === PHASES.BREATHING || phase === PHASES.RECOVERY}
           className={`w-full max-w-xs py-4 rounded-2xl font-bold text-white text-lg border transition-all
             ${phase === PHASES.BREATHING || phase === PHASES.RECOVERY
               ? 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-              : 'bg-gradient-to-r from-cyan-500 to-teal-500 border-transparent shadow-xl shadow-cyan-500/20'}`}>
+              : 'bg-gradient-to-r from-cyan-500 to-teal-500 border-transparent shadow-xl shadow-cyan-500/20'}`}
+        >
           {btnLabel()}
         </motion.button>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -19,14 +19,19 @@ import {
   Cloud,
   RefreshCw,
   Loader2,
+  LogIn,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 import ChangePinModal from '../components/ChangePinModal';
+import AuthModal from '../components/AuthModal';
+import { DAILY_STREAK_TARGET } from '../constants/appConstants';
+import { clampNonNegativeNumber } from '../utils/moneyUtils';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const {
+    user,
     settings,
     updateSettings,
     streak,
@@ -44,26 +49,40 @@ export default function SettingsPage() {
   } = useStore();
 
   const [showChangePinModal, setShowChangePinModal] = useState(false);
-  const [backupStatus, setBackupStatus] = useState(null); // { type: 'success' | 'error', message: string }
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(null);
   const [copied, setCopied] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
   const fileInputRef = useRef(null);
+  const statusTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    };
+  }, []);
+
+  const showStatus = (nextStatus, durationMs = 3500) => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    setBackupStatus(nextStatus);
+    statusTimerRef.current = setTimeout(() => {
+      setBackupStatus(null);
+      setCopied(false);
+      statusTimerRef.current = null;
+    }, durationMs);
+  };
 
   const handleManualSync = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
     setManualSyncing(true);
     try {
       await syncCloudData();
-      setBackupStatus({
-        type: 'success',
-        message: 'ซิงค์ข้อมูลกับคลาวด์สำเร็จ! ⚡',
-      });
-      setTimeout(() => setBackupStatus(null), 3000);
+      showStatus({ type: 'success', message: 'ซิงค์ข้อมูลกับคลาวด์สำเร็จ! ⚡' }, 3000);
     } catch {
-      setBackupStatus({
-        type: 'error',
-        message: 'เกิดข้อผิดพลาดในการซิงค์',
-      });
-      setTimeout(() => setBackupStatus(null), 3000);
+      showStatus({ type: 'error', message: 'เกิดข้อผิดพลาดในการซิงค์' }, 3000);
     } finally {
       setManualSyncing(false);
     }
@@ -84,17 +103,15 @@ export default function SettingsPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      setBackupStatus({
+      showStatus({
         type: 'success',
         message: `สำรองข้อมูลสำเร็จ! ดาวน์โหลดไฟล์ myfee_backup_${dateStr}.json เรียบร้อย`,
-      });
-      setTimeout(() => setBackupStatus(null), 4000);
+      }, 4000);
     } catch (err) {
-      setBackupStatus({
+      showStatus({
         type: 'error',
         message: `เกิดข้อผิดพลาดในการสำรองข้อมูล: ${err.message}`,
-      });
-      setTimeout(() => setBackupStatus(null), 4000);
+      }, 4000);
     }
   };
 
@@ -103,20 +120,9 @@ export default function SettingsPage() {
       const data = exportAllData();
       await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
       setCopied(true);
-      setBackupStatus({
-        type: 'success',
-        message: 'คัดลอกข้อความ JSON ลงคลิปบอร์ดแล้ว',
-      });
-      setTimeout(() => {
-        setCopied(false);
-        setBackupStatus(null);
-      }, 3000);
+      showStatus({ type: 'success', message: 'คัดลอกข้อความ JSON ลงคลิปบอร์ดแล้ว' }, 3000);
     } catch {
-      setBackupStatus({
-        type: 'error',
-        message: 'ไม่สามารถคัดลอกได้ กรุณาใช้ปุ่มดาวน์โหลดไฟล์',
-      });
-      setTimeout(() => setBackupStatus(null), 3000);
+      showStatus({ type: 'error', message: 'ไม่สามารถคัดลอกได้ กรุณาใช้ปุ่มดาวน์โหลดไฟล์' }, 3000);
     }
   };
 
@@ -130,32 +136,42 @@ export default function SettingsPage() {
         const parsed = JSON.parse(ev.target?.result);
         const success = importAllData(parsed);
         if (success) {
-          setBackupStatus({
-            type: 'success',
-            message: 'กู้คืนข้อมูลทั้งหมดเรียบร้อยแล้ว!',
-          });
+          showStatus({ type: 'success', message: 'กู้คืนข้อมูลทั้งหมดเรียบร้อยแล้ว!' }, 4000);
         } else {
-          setBackupStatus({
+          showStatus({
             type: 'error',
             message: 'รูปแบบไฟล์ไม่ถูกต้อง กรุณาใช้ไฟล์ JSON ที่สำรองไว้',
-          });
+          }, 4000);
         }
       } catch (err) {
-        setBackupStatus({
-          type: 'error',
-          message: 'ไม่สามารถอ่านไฟล์ได้: ' + err.message,
-        });
+        showStatus({ type: 'error', message: 'ไม่สามารถอ่านไฟล์ได้: ' + err.message }, 4000);
       }
-      setTimeout(() => setBackupStatus(null), 4000);
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
+  const handleTogglePin = () => {
+    const currentlyEnabled = Boolean(settings?.isPinEnabled && settings?.pinCode);
+    if (!currentlyEnabled) {
+      if (!settings?.pinCode) {
+        setShowChangePinModal(true);
+        return;
+      }
+      updateSettings({ isPinEnabled: true });
+    } else {
+      updateSettings({ isPinEnabled: false });
+    }
+  };
+
+  const isPinCurrentlyEnabled = Boolean(settings?.isPinEnabled && settings?.pinCode);
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
         <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
           whileTap={{ scale: 0.9 }}
           onClick={() => navigate('/')}
           className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert"
@@ -175,7 +191,9 @@ export default function SettingsPage() {
         <div className="z-10">
           <h3 className="text-white dark-invert font-bold text-base">Streak ต่อเนื่อง</h3>
           <p className="text-sm text-gray-300 mt-0.5">{streak.count} วัน</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">วันนี้อ่านแล้ว {streak.cardsFlippedToday}/10 คำ</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            วันนี้ฝึกแล้ว {streak.cardsFlippedToday}/{DAILY_STREAK_TARGET} ครั้ง
+          </p>
         </div>
       </div>
 
@@ -192,47 +210,70 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-white dark-invert text-sm">คลาวด์ซิงค์เรียลไทม์ (Auto-Sync)</h3>
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
+                  <h3 className="font-bold text-white dark-invert text-sm">คลาวด์ซิงค์เรียลไทม์ (Authenticated Sync)</h3>
+                  {user && (
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-gray-400">ซิงค์อัตโนมัติระหว่างมือถือและคอมพิวเตอร์แบบ Single-User</p>
+                <p className="text-xs text-gray-400">
+                  {user ? `บัญชี: ${user.email}` : 'เข้าสู่ระบบเพื่อซิงค์ข้อมูลข้ามอุปกรณ์อย่างปลอดภัย'}
+                </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1 text-xs">
+          <div className="flex items-center justify-between pt-1 text-xs gap-2">
             <div className="text-gray-400">
-              สถานะ: <span className="text-emerald-400 font-bold">เชื่อมต่ออัตโนมัติ</span>
-              {lastSyncedAt && (
+              สถานะ:{' '}
+              {user ? (
+                <span className="text-emerald-400 font-bold">เชื่อมต่อบัญชีแล้ว</span>
+              ) : (
+                <span className="text-amber-400 font-bold">โหมดออฟไลน์</span>
+              )}
+              {lastSyncedAt && user && (
                 <span className="text-[11px] text-gray-500 block">
                   ซิงค์ล่าสุด: {new Date(lastSyncedAt).toLocaleTimeString()}
                 </span>
               )}
             </div>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={handleManualSync}
-              disabled={isSyncing || manualSyncing}
-              className="py-2 px-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
-            >
-              {isSyncing || manualSyncing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
+            <div className="flex gap-2">
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowAuthModal(true)}
+                className="py-2 px-3 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                {user ? 'บัญชี' : 'เข้าสู่ระบบ'}
+              </motion.button>
+              {user && (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleManualSync}
+                  disabled={isSyncing || manualSyncing}
+                  className="py-2 px-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {isSyncing || manualSyncing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  ซิงค์ทันที
+                </motion.button>
               )}
-              ซิงค์ทันที
-            </motion.button>
+            </div>
           </div>
 
           {cloudSyncError && (
             <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">รอการสร้างตารางบน Supabase:</span>{' '}
-                กรุณารันคำสั่งในไฟล์ <code className="bg-black/30 px-1 rounded font-mono">supabase_schema.sql</code> บน Supabase SQL Editor 1 ครั้งเพื่อให้คลาวด์เริ่มทำงาน
+                <span className="font-bold">เกิดข้อผิดพลาดในการซิงค์:</span>{' '}
+                {cloudSyncError} (ตรวจสอบการรัน <code className="bg-black/30 px-1 rounded font-mono">supabase_schema.sql</code> บน Supabase SQL Editor)
               </div>
             </div>
           )}
@@ -241,7 +282,7 @@ export default function SettingsPage() {
         {/* Backup & Restore Card */}
         <div className="glass-dark rounded-2xl border border-emerald-500/30 p-5 space-y-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-          
+
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
@@ -254,7 +295,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Data Summary Chips */}
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
             <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-center">
               <span className="text-[10px] text-gray-400 block">Habits</span>
@@ -274,9 +314,9 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-2 pt-2">
             <motion.button
+              type="button"
               whileTap={{ scale: 0.97 }}
               onClick={handleExport}
               className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
@@ -286,6 +326,7 @@ export default function SettingsPage() {
             </motion.button>
 
             <motion.button
+              type="button"
               whileTap={{ scale: 0.97 }}
               onClick={() => fileInputRef.current?.click()}
               className="py-3 px-4 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
@@ -295,6 +336,8 @@ export default function SettingsPage() {
             </motion.button>
 
             <motion.button
+              type="button"
+              aria-label="คัดลอก JSON"
               whileTap={{ scale: 0.97 }}
               onClick={handleCopyJson}
               className="py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all"
@@ -312,7 +355,6 @@ export default function SettingsPage() {
             onChange={handleImportFile}
           />
 
-          {/* Feedback alert */}
           <AnimatePresence>
             {backupStatus && (
               <motion.div
@@ -350,6 +392,10 @@ export default function SettingsPage() {
               </div>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(settings.darkMode)}
+              aria-label="สลับโหมดกลางคืน"
               onClick={() => updateSettings({ darkMode: !settings.darkMode })}
               className={`w-12 h-6 rounded-full p-1 transition-colors ${settings.darkMode ? 'bg-indigo-500' : 'bg-gray-600'}`}
             >
@@ -371,6 +417,10 @@ export default function SettingsPage() {
               </div>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(settings.autoPlay)}
+              aria-label="สลับการเล่นเสียงอัตโนมัติ"
               onClick={() => updateSettings({ autoPlay: !settings.autoPlay })}
               className={`w-12 h-6 rounded-full p-1 transition-colors ${settings.autoPlay ? 'bg-emerald-500' : 'bg-gray-600'}`}
             >
@@ -386,22 +436,28 @@ export default function SettingsPage() {
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">งบประมาณรายรับ-รายจ่าย</h3>
 
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">งบประมาณรายวัน (บาท)</label>
+            <label htmlFor="daily-budget-input" className="text-xs text-gray-400 mb-1 block">งบประมาณรายวัน (บาท)</label>
             <input
+              id="daily-budget-input"
               type="number"
+              min="0"
+              step="any"
               value={settings.dailyBudget || ''}
-              onChange={(e) => updateSettings({ dailyBudget: Number(e.target.value) })}
+              onChange={(e) => updateSettings({ dailyBudget: clampNonNegativeNumber(e.target.value) })}
               placeholder="0"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white dark-invert text-sm outline-none focus:border-pink-500/50 transition-colors"
             />
           </div>
 
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">งบประมาณรายเดือน (บาท)</label>
+            <label htmlFor="monthly-budget-input" className="text-xs text-gray-400 mb-1 block">งบประมาณรายเดือน (บาท)</label>
             <input
+              id="monthly-budget-input"
               type="number"
+              min="0"
+              step="any"
               value={settings.monthlyBudget || ''}
-              onChange={(e) => updateSettings({ monthlyBudget: Number(e.target.value) })}
+              onChange={(e) => updateSettings({ monthlyBudget: clampNonNegativeNumber(e.target.value) })}
               placeholder="0"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white dark-invert text-sm outline-none focus:border-pink-500/50 transition-colors"
             />
@@ -419,15 +475,19 @@ export default function SettingsPage() {
               </div>
               <div>
                 <p className="font-bold text-white dark-invert text-sm">ล็อกแอปด้วย PIN (4 หลัก)</p>
-                <p className="text-xs text-gray-500">ต้องใส่รหัส PIN ก่อนเข้าใช้งาน</p>
+                <p className="text-xs text-gray-500">ต้องใส่รหัส PIN ก่อนเข้าใช้งานบนเครื่องนี้</p>
               </div>
             </div>
             <button
-              onClick={() => updateSettings({ isPinEnabled: !(settings.isPinEnabled !== false) })}
-              className={`w-12 h-6 rounded-full p-1 transition-colors ${settings.isPinEnabled !== false ? 'bg-blue-500' : 'bg-gray-600'}`}
+              type="button"
+              role="switch"
+              aria-checked={isPinCurrentlyEnabled}
+              aria-label="เปิดหรือปิดล็อกแอปด้วย PIN"
+              onClick={handleTogglePin}
+              className={`w-12 h-6 rounded-full p-1 transition-colors ${isPinCurrentlyEnabled ? 'bg-blue-500' : 'bg-gray-600'}`}
             >
               <motion.div
-                animate={{ x: settings.isPinEnabled !== false ? 24 : 0 }}
+                animate={{ x: isPinCurrentlyEnabled ? 24 : 0 }}
                 className="w-4 h-4 bg-white rounded-full shadow-sm"
               />
             </button>
@@ -439,23 +499,26 @@ export default function SettingsPage() {
                 <KeyRound className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-bold text-white dark-invert text-sm">เปลี่ยนรหัส PIN</p>
-                <p className="text-xs text-gray-500">ตั้งรหัสผ่าน 4 หลักใหม่</p>
+                <p className="font-bold text-white dark-invert text-sm">
+                  {settings?.pinCode ? 'เปลี่ยนรหัส PIN' : 'ตั้งรหัส PIN ใหม่'}
+                </p>
+                <p className="text-xs text-gray-500">ตั้งรหัสผ่าน 4 หลักสำหรับหน้าจอล็อก</p>
               </div>
             </div>
             <motion.button
+              type="button"
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowChangePinModal(true)}
               className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-xs font-bold transition-colors"
             >
-              เปลี่ยนรหัส
+              {settings?.pinCode ? 'เปลี่ยนรหัส' : 'ตั้งรหัส'}
             </motion.button>
           </div>
         </div>
       </div>
 
-      {/* Change PIN Modal */}
       <ChangePinModal isOpen={showChangePinModal} onClose={() => setShowChangePinModal(false)} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import useStore from '../store/useStore';
 import { Volume2, Star, CheckCircle, RefreshCw, ArrowLeft, BookOpen } from 'lucide-react';
@@ -8,10 +8,10 @@ const LEVELS = ['All', 'A1', 'A2', 'B1', 'B2', 'C1'];
 
 function pickRandomCard(vocab, learned, showLearned, currentId = null) {
   if (!vocab || vocab.length === 0) return null;
-  let pool = vocab.filter(c => showLearned ? learned.includes(c.id) : !learned.includes(c.id));
+  let pool = vocab.filter((c) => (showLearned ? learned.includes(c.id) : !learned.includes(c.id)));
   if (pool.length === 0) pool = vocab;
 
-  const available = pool.filter(c => c.id !== currentId);
+  const available = pool.filter((c) => c.id !== currentId);
   const finalPool = available.length > 0 ? available : pool;
 
   return finalPool[Math.floor(Math.random() * finalPool.length)] || null;
@@ -19,17 +19,50 @@ function pickRandomCard(vocab, learned, showLearned, currentId = null) {
 
 export default function FlashcardPage() {
   const navigate = useNavigate();
-  const { vocabulary, learnedCards, favCards, toggleLearned, toggleFav, flashcardFilter, setFlashcardFilter, incrementCardsFlipped } = useStore();
+  const {
+    vocabulary,
+    vocabularyLoaded,
+    loadVocabulary,
+    learnedCards,
+    favCards,
+    toggleLearned,
+    toggleFav,
+    flashcardFilter,
+    setFlashcardFilter,
+    incrementCardsFlipped,
+  } = useStore();
+
   const [isFlipped, setIsFlipped] = useState(false);
   const [showLearned, setShowLearned] = useState(false);
+  const [currentCard, setCurrentCard] = useState(null);
+  const nextTimerRef = useRef(null);
 
-  const filteredVocab = React.useMemo(() => {
-    return flashcardFilter === 'All' 
-      ? vocabulary 
-      : vocabulary.filter(w => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
+  useEffect(() => {
+    loadVocabulary();
+    return () => {
+      if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [loadVocabulary]);
+
+  const filteredVocab = useMemo(() => {
+    return flashcardFilter === 'All'
+      ? vocabulary
+      : vocabulary.filter((w) => w.level === flashcardFilter || w.tags?.includes(flashcardFilter));
   }, [flashcardFilter, vocabulary]);
 
-  const [currentCard, setCurrentCard] = useState(() => pickRandomCard(filteredVocab, learnedCards, false));
+  useEffect(() => {
+    if (filteredVocab.length > 0) {
+      setIsFlipped(false);
+      setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned));
+    } else {
+      setCurrentCard(null);
+    }
+    // Intentionally re-pick only when vocab/filter/mode changes, not on every learnedCards toggle
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredVocab, showLearned]);
 
   const handleFlip = () => {
     if (!isFlipped) {
@@ -38,56 +71,74 @@ export default function FlashcardPage() {
     setIsFlipped(!isFlipped);
   };
 
-  const [prevFilterKey, setPrevFilterKey] = useState(`${flashcardFilter}_${showLearned}`);
-  const currentFilterKey = `${flashcardFilter}_${showLearned}`;
-  if (prevFilterKey !== currentFilterKey) {
-    setPrevFilterKey(currentFilterKey);
-    setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned));
-  }
-
   const next = () => {
+    if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
     setIsFlipped(false);
-    setTimeout(() => setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned, currentCard?.id)), 150);
+    nextTimerRef.current = setTimeout(() => {
+      setCurrentCard(pickRandomCard(filteredVocab, learnedCards, showLearned, currentCard?.id));
+      nextTimerRef.current = null;
+    }, 150);
   };
 
   const handleSpeak = (e, text) => {
     e.stopPropagation();
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US';
     window.speechSynthesis.speak(u);
   };
 
+  if (!vocabularyLoaded) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-3" role="status" aria-live="polite">
+        <div className="w-8 h-8 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" aria-hidden="true" />
+        <span className="text-xs text-gray-400 font-medium">กำลังโหลดคลังคำศัพท์...</span>
+      </div>
+    );
+  }
+
   if (!currentCard) return null;
 
   const isFav = favCards.includes(currentCard.id);
   const isLearned = learnedCards.includes(currentCard.id);
-  
-  // Calculate stats for current filter
-  const filterLearned = learnedCards.filter(id => filteredVocab.some(v => v.id === id)).length;
+
+  const filterLearned = learnedCards.filter((id) => filteredVocab.some((v) => v.id === id)).length;
   const learnedPct = filteredVocab.length > 0 ? Math.round((filterLearned / filteredVocab.length) * 100) : 0;
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate('/')}
-          className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert">
+        <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
+          whileTap={{ scale: 0.9 }}
+          onClick={() => navigate('/')}
+          className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert"
+        >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="flex bg-white/10 p-1 rounded-xl">
-          <select 
-            value={flashcardFilter} 
-            onChange={e => setFlashcardFilter(e.target.value)}
+          <select
+            aria-label="เลือกระดับคำศัพท์"
+            value={flashcardFilter}
+            onChange={(e) => setFlashcardFilter(e.target.value)}
             className="bg-transparent text-white dark-invert text-sm font-bold outline-none appearance-none px-4 py-1.5"
           >
-            {LEVELS.map(lvl => (
-              <option key={lvl} value={lvl} className="bg-gray-800 text-white">{lvl === 'All' ? 'ทุกหมวด' : `ระดับ ${lvl}`}</option>
+            {LEVELS.map((lvl) => (
+              <option key={lvl} value={lvl} className="bg-gray-800 text-white">
+                {lvl === 'All' ? 'ทุกหมวด' : `ระดับ ${lvl}`}
+              </option>
             ))}
           </select>
         </div>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowLearned(!showLearned)}
-          className={`p-2.5 rounded-xl border transition-colors ${showLearned ? 'bg-blue-500/20 border-blue-500/30 text-blue-400' : 'glass border-white/10 text-white dark-invert'}`}>
+        <motion.button
+          type="button"
+          aria-label={showLearned ? 'แสดงคำที่ยังไม่จำ' : 'ทบทวนคำที่จำได้แล้ว'}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setShowLearned(!showLearned)}
+          className={`p-2.5 rounded-xl border transition-colors ${showLearned ? 'bg-blue-500/20 border-blue-500/30 text-blue-400' : 'glass border-white/10 text-white dark-invert'}`}
+        >
           <BookOpen className="w-5 h-5" />
         </motion.button>
       </div>
@@ -96,7 +147,6 @@ export default function FlashcardPage() {
         <p className="text-xs text-gray-400">{filterLearned} / {filteredVocab.length} · {learnedPct}%</p>
       </div>
 
-      {/* Progress Bar */}
       <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
         <motion.div
           className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full"
@@ -106,7 +156,6 @@ export default function FlashcardPage() {
         />
       </div>
 
-      {/* Flashcard */}
       <div className="flex-1 flex flex-col items-center justify-center">
         <div className="w-full relative" style={{ perspective: '1500px', height: '340px' }}>
           <motion.div
@@ -116,14 +165,20 @@ export default function FlashcardPage() {
             transition={{ duration: 0.55, type: 'spring', stiffness: 280, damping: 22 }}
             onClick={handleFlip}
           >
-            {/* Front */}
-            <div className="absolute inset-0 glass-dark rounded-[2rem] p-7 flex flex-col justify-between border border-white/10"
-              style={{ backfaceVisibility: 'hidden' }}>
+            <div
+              className="absolute inset-0 glass-dark rounded-[2rem] p-7 flex flex-col justify-between border border-white/10"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
               <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
               <div className="relative z-10 flex justify-between">
                 <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-gray-300">{currentCard.level || 'A1'}</span>
-                <motion.button whileTap={{ scale: 0.8 }} onClick={(e) => { e.stopPropagation(); toggleFav(currentCard.id); }}
-                  className={`p-2 rounded-full transition-colors ${isFav ? 'text-yellow-400' : 'text-gray-600'}`}>
+                <motion.button
+                  type="button"
+                  aria-label={isFav ? 'นำออกจากคำโปรด' : 'เพิ่มในคำโปรด'}
+                  whileTap={{ scale: 0.8 }}
+                  onClick={(e) => { e.stopPropagation(); toggleFav(currentCard.id); }}
+                  className={`p-2 rounded-full transition-colors ${isFav ? 'text-yellow-400' : 'text-gray-600'}`}
+                >
                   <Star className="w-5 h-5" fill={isFav ? 'currentColor' : 'none'} />
                 </motion.button>
               </div>
@@ -133,8 +188,13 @@ export default function FlashcardPage() {
                 <span className="text-xs font-bold px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full border border-blue-500/20">{currentCard.pos}</span>
               </div>
               <div className="relative z-10 flex justify-between items-center">
-                <motion.button whileTap={{ scale: 0.9 }} onClick={(e) => handleSpeak(e, currentCard.word)}
-                  className="p-3 bg-white/5 rounded-xl border border-white/10 text-white">
+                <motion.button
+                  type="button"
+                  aria-label={`ฟังเสียงคำว่า ${currentCard.word}`}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={(e) => handleSpeak(e, currentCard.word)}
+                  className="p-3 bg-white/5 rounded-xl border border-white/10 text-white"
+                >
                   <Volume2 className="w-5 h-5" />
                 </motion.button>
                 <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Tap to flip</span>
@@ -142,9 +202,10 @@ export default function FlashcardPage() {
               </div>
             </div>
 
-            {/* Back */}
-            <div className="absolute inset-0 glass-dark rounded-[2rem] p-7 flex flex-col justify-between border border-white/10"
-              style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+            <div
+              className="absolute inset-0 glass-dark rounded-[2rem] p-7 flex flex-col justify-between border border-white/10"
+              style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+            >
               <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-pink-500/10 to-transparent pointer-events-none" />
               <div />
               <div className="relative z-10 flex flex-col items-center text-center gap-4">
@@ -163,23 +224,29 @@ export default function FlashcardPage() {
         </div>
       </div>
 
-      {/* Controls (Always Visible) */}
       <div className="flex gap-2 w-full mt-2">
-        <motion.button whileTap={{ scale: 0.95 }} onClick={() => { toggleLearned(currentCard.id); next(); }}
-          className={`flex-1 py-3.5 rounded-2xl font-bold text-sm border flex items-center justify-center gap-2 transition-colors ${isLearned ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.95 }}
+          onClick={() => { toggleLearned(currentCard.id); next(); }}
+          className={`flex-1 py-3.5 rounded-2xl font-bold text-sm border flex items-center justify-center gap-2 transition-colors ${isLearned ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+        >
           <CheckCircle className="w-5 h-5" />
           {isLearned ? 'จำได้แล้ว' : 'ทำเครื่องหมายว่าจำได้'}
         </motion.button>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={next}
-          className="px-6 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30 flex flex-col items-center justify-center gap-1">
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.9 }}
+          onClick={next}
+          className="px-6 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30 flex flex-col items-center justify-center gap-1"
+        >
           <RefreshCw className="w-5 h-5" />
           <span className="text-[10px] font-bold uppercase">ถัดไป</span>
         </motion.button>
       </div>
 
-      {/* Tags */}
       <div className="flex gap-2 flex-wrap justify-center">
-        {(currentCard.tags || []).map(tag => (
+        {(currentCard.tags || []).map((tag) => (
           <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-400">{tag}</span>
         ))}
       </div>

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
+import { getLocalDateKey } from '../utils/dateUtils';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import {
   ArrowLeft,
   Plus,
@@ -45,7 +47,6 @@ const ICON_MAP = {
   sun: Sun,
   coffee: Coffee,
   sparkles: Sparkles,
-  // Backwards compatibility fallbacks
   '⚡': Zap,
   '📚': BookOpen,
   '🏃': Activity,
@@ -75,7 +76,7 @@ const AVAILABLE_ICONS = [
   { key: 'sparkles', icon: Sparkles },
 ];
 
-const RenderHabitIcon = ({ iconKey, className = "w-4 h-4" }) => {
+const RenderHabitIcon = ({ iconKey, className = 'w-4 h-4' }) => {
   const IconComp = ICON_MAP[iconKey] || Zap;
   return <IconComp className={className} />;
 };
@@ -84,11 +85,11 @@ const Heatmap = ({ history }) => {
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().split('T')[0];
+    return getLocalDateKey(d);
   });
   return (
     <div className="flex gap-1 mt-2">
-      {days.map(day => (
+      {days.map((day) => (
         <div
           key={day}
           title={day}
@@ -102,11 +103,12 @@ const Heatmap = ({ history }) => {
 export default function HabitPage() {
   const navigate = useNavigate();
   const { habits, addHabit, toggleHabit, deleteHabit } = useStore();
+  const { confirmDeleteId, requestDelete } = useConfirmDelete(deleteHabit);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [routine, setRoutine] = useState('morning');
   const [icon, setIcon] = useState('zap');
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateKey();
 
   const handleAdd = (e) => {
     e.preventDefault();
@@ -117,15 +119,16 @@ export default function HabitPage() {
   };
 
   const grouped = { morning: [], afternoon: [], evening: [] };
-  habits.forEach(h => {
+  habits.forEach((h) => {
     (grouped[h.routine] || grouped.morning).push(h);
   });
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
           whileTap={{ scale: 0.9 }}
           onClick={() => navigate('/')}
           className="p-2.5 glass rounded-xl border border-white/10 text-white"
@@ -135,10 +138,12 @@ export default function HabitPage() {
         <div className="text-center">
           <h1 className="font-black text-white text-lg">Habit Tracker</h1>
           <p className="text-xs text-gray-400">
-            {habits.filter(h => (h.history || []).includes(todayStr)).length} / {habits.length} วันนี้
+            {habits.filter((h) => (h.history || []).includes(todayStr)).length} / {habits.length} วันนี้
           </p>
         </div>
         <motion.button
+          type="button"
+          aria-label="เพิ่มนิสัยใหม่"
           whileTap={{ scale: 0.9 }}
           onClick={() => setShowForm(!showForm)}
           className={`p-2.5 rounded-xl border transition-colors ${
@@ -151,7 +156,6 @@ export default function HabitPage() {
         </motion.button>
       </div>
 
-      {/* Add Form */}
       <AnimatePresence>
         {showForm && (
           <motion.form
@@ -161,12 +165,12 @@ export default function HabitPage() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden glass-dark rounded-2xl border border-white/10 p-4 flex flex-col gap-3"
           >
-            {/* Icon Picker */}
             <div className="flex gap-2 flex-wrap">
               {AVAILABLE_ICONS.map(({ key, icon: IconComp }) => (
                 <button
                   key={key}
                   type="button"
+                  aria-label={`เลือกไอคอน ${key}`}
                   onClick={() => setIcon(key)}
                   className={`p-2 rounded-xl border transition-all ${
                     icon === key
@@ -181,12 +185,11 @@ export default function HabitPage() {
 
             <input
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="ชื่อนิสัยใหม่ (เช่น อ่านหนังสือ 15 นาที)..."
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-500 outline-none focus:border-orange-500/50"
             />
 
-            {/* Routine Picker */}
             <div className="flex gap-2">
               {Object.entries(ROUTINE_CONFIG).map(([val, cfg]) => {
                 const RoutineIcon = cfg.icon;
@@ -220,7 +223,6 @@ export default function HabitPage() {
         )}
       </AnimatePresence>
 
-      {/* Habit Groups */}
       <div className="flex-1 overflow-y-auto space-y-5">
         {Object.entries(grouped).map(([key, list]) => {
           if (list.length === 0) return null;
@@ -237,7 +239,7 @@ export default function HabitPage() {
               </div>
 
               <div className="space-y-2">
-                {list.map(habit => {
+                {list.map((habit) => {
                   const isDone = (habit.history || []).includes(todayStr);
                   return (
                     <motion.div
@@ -248,6 +250,8 @@ export default function HabitPage() {
                       }`}
                     >
                       <motion.button
+                        type="button"
+                        aria-label={isDone ? `ยกเลิก ${habit.name}` : `ทำ ${habit.name} เสร็จแล้ว`}
                         whileTap={{ scale: 0.8 }}
                         onClick={() => toggleHabit(habit.id)}
                         className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-sm transition-all ${
@@ -274,11 +278,21 @@ export default function HabitPage() {
                               {habit.streak}
                             </span>
                             <motion.button
+                              type="button"
+                              aria-label={`ลบนิสัย ${habit.name}`}
                               whileTap={{ scale: 0.8 }}
-                              onClick={() => deleteHabit(habit.id)}
-                              className="text-gray-600 hover:text-red-400 transition-colors p-1"
+                              onClick={() => requestDelete(habit.id)}
+                              className={`transition-colors p-1 rounded-lg ${
+                                confirmDeleteId === habit.id
+                                  ? 'text-red-400 bg-red-500/20'
+                                  : 'text-gray-600 hover:text-red-400'
+                              }`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {confirmDeleteId === habit.id ? (
+                                <span className="text-[10px] font-bold">ยืนยัน</span>
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </motion.button>
                           </div>
                         </div>

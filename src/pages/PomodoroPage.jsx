@@ -5,24 +5,22 @@ import { useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 
 const MODES = {
-  FOCUS: { id: 'focus', name: 'โฟกัส', duration: 25 * 60, color: '#f43f5e', gradient: 'from-rose-500 to-red-600' },
-  SHORT_BREAK: { id: 'short', name: 'พักสั้น', duration: 5 * 60, color: '#10b981', gradient: 'from-emerald-400 to-teal-500' },
-  LONG_BREAK: { id: 'long', name: 'พักยาว', duration: 15 * 60, color: '#0ea5e9', gradient: 'from-sky-400 to-blue-500' },
+  FOCUS: { id: 'focus', name: 'โฟกัส', duration: 25 * 60, color: '#f43f5e', gradient: 'from-rose-500 to-red-600', shadowClass: 'shadow-rose-500/25' },
+  SHORT_BREAK: { id: 'short', name: 'พักสั้น', duration: 5 * 60, color: '#10b981', gradient: 'from-emerald-400 to-teal-500', shadowClass: 'shadow-emerald-500/25' },
+  LONG_BREAK: { id: 'long', name: 'พักยาว', duration: 15 * 60, color: '#0ea5e9', gradient: 'from-sky-400 to-blue-500', shadowClass: 'shadow-sky-500/25' },
 };
 
-// Simple web audio chime
 const playChime = () => {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
     const now = ctx.currentTime;
-    
-    // 2-tone pleasant bell
+
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); // D5
+    osc1.frequency.setValueAtTime(587.33, now);
     gain1.gain.setValueAtTime(0.3, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
     osc1.connect(gain1);
@@ -33,14 +31,20 @@ const playChime = () => {
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.15); // A5
+    osc2.frequency.setValueAtTime(880, now + 0.15);
     gain2.gain.setValueAtTime(0.3, now + 0.15);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.6);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
     osc2.start(now + 0.15);
     osc2.stop(now + 1.6);
-  } catch {}
+
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 1800);
+  } catch (err) {
+    console.warn('Pomodoro chime blocked by browser policy:', err);
+  }
 };
 
 export default function PomodoroPage() {
@@ -51,6 +55,8 @@ export default function PomodoroPage() {
   const [timeLeft, setTimeLeft] = useState(MODES.FOCUS.duration);
   const [isRunning, setIsRunning] = useState(false);
   const timerRef = useRef(null);
+  const endTimeRef = useRef(null);
+  const completedRef = useRef(false);
 
   const clearCurrentTimer = useCallback(() => {
     if (timerRef.current) {
@@ -61,6 +67,7 @@ export default function PomodoroPage() {
 
   const switchMode = useCallback((mode) => {
     clearCurrentTimer();
+    completedRef.current = false;
     setIsRunning(false);
     setActiveMode(mode);
     setTimeLeft(mode.duration);
@@ -73,7 +80,6 @@ export default function PomodoroPage() {
 
     if (activeMode.id === 'focus') {
       addPomodoroSession();
-      // Auto transition to short break
       switchMode(MODES.SHORT_BREAK);
     } else {
       switchMode(MODES.FOCUS);
@@ -81,26 +87,34 @@ export default function PomodoroPage() {
   }, [activeMode, addPomodoroSession, switchMode, clearCurrentTimer]);
 
   useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleComplete();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
+    if (!isRunning) {
       clearCurrentTimer();
+      return;
     }
+
+    completedRef.current = false;
+    endTimeRef.current = Date.now() + timeLeft * 1000;
+    timerRef.current = setInterval(() => {
+      const remainingSec = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+      setTimeLeft(remainingSec);
+    }, 250);
+
     return clearCurrentTimer;
-  }, [isRunning, handleComplete, clearCurrentTimer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, clearCurrentTimer]);
+
+  useEffect(() => {
+    if (isRunning && timeLeft === 0 && !completedRef.current) {
+      completedRef.current = true;
+      handleComplete();
+    }
+  }, [isRunning, timeLeft, handleComplete]);
 
   const toggleTimer = () => setIsRunning((prev) => !prev);
 
   const resetTimer = () => {
     clearCurrentTimer();
+    completedRef.current = false;
     setIsRunning(false);
     setTimeLeft(activeMode.duration);
   };
@@ -113,9 +127,10 @@ export default function PomodoroPage() {
 
   return (
     <div className="flex flex-col h-full gap-5 pb-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <motion.button
+          type="button"
+          aria-label="ย้อนกลับ"
           whileTap={{ scale: 0.9 }}
           onClick={() => navigate(-1)}
           className="p-2.5 glass rounded-xl border border-white/10 text-white dark-invert"
@@ -129,13 +144,13 @@ export default function PomodoroPage() {
         <div className="w-10" />
       </div>
 
-      {/* Mode Selector Tabs */}
       <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
         {Object.values(MODES).map((m) => {
           const isSelected = activeMode.id === m.id;
           return (
             <button
               key={m.id}
+              type="button"
               onClick={() => switchMode(m)}
               className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
                 isSelected
@@ -149,25 +164,15 @@ export default function PomodoroPage() {
         })}
       </div>
 
-      {/* Main Countdown Circle */}
       <div className="flex-1 flex flex-col items-center justify-center my-2">
         <div className="relative w-64 h-64 flex items-center justify-center">
-          {/* Subtle Ambient Glow */}
           <div
             className="absolute inset-0 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-500"
             style={{ backgroundColor: activeMode.color }}
           />
 
-          {/* SVG Progress Circle */}
           <svg className="w-full h-full -rotate-90">
-            <circle
-              cx="128"
-              cy="128"
-              r="110"
-              stroke="rgba(255, 255, 255, 0.08)"
-              strokeWidth="10"
-              fill="none"
-            />
+            <circle cx="128" cy="128" r="110" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="10" fill="none" />
             <circle
               cx="128"
               cy="128"
@@ -182,7 +187,6 @@ export default function PomodoroPage() {
             />
           </svg>
 
-          {/* Timer Display Inside */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1">
               {activeMode.name}
@@ -201,9 +205,10 @@ export default function PomodoroPage() {
           </div>
         </div>
 
-        {/* Controls */}
         <div className="flex items-center gap-4 mt-8">
           <motion.button
+            type="button"
+            aria-label="รีเซ็ตเวลา"
             whileTap={{ scale: 0.9 }}
             onClick={resetTimer}
             className="p-3.5 rounded-2xl glass border border-white/10 text-gray-300 hover:text-white"
@@ -213,12 +218,13 @@ export default function PomodoroPage() {
           </motion.button>
 
           <motion.button
+            type="button"
             whileTap={{ scale: 0.95 }}
             onClick={toggleTimer}
             className={`px-8 py-4 rounded-2xl font-black text-base flex items-center gap-2.5 shadow-xl transition-all ${
               isRunning
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : `bg-gradient-to-r ${activeMode.gradient} text-white shadow-${activeMode.id}-500/25`
+                : `bg-gradient-to-r ${activeMode.gradient} text-white ${activeMode.shadowClass}`
             }`}
           >
             {isRunning ? (
@@ -233,6 +239,8 @@ export default function PomodoroPage() {
           </motion.button>
 
           <motion.button
+            type="button"
+            aria-label="ข้ามรอบนี้"
             whileTap={{ scale: 0.9 }}
             onClick={handleComplete}
             className="p-3.5 rounded-2xl glass border border-white/10 text-gray-300 hover:text-white"
@@ -243,16 +251,13 @@ export default function PomodoroPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 pt-2">
         <div className="glass-dark rounded-2xl p-3.5 border border-white/10 flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400">
             <Flame className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-lg font-black text-white">
-              {pomodoroStats?.todaySessions || 0}
-            </div>
+            <div className="text-lg font-black text-white">{pomodoroStats?.todaySessions || 0}</div>
             <div className="text-[10px] text-gray-400 font-medium">รอบที่สำเร็จวันนี้</div>
           </div>
         </div>
@@ -262,9 +267,7 @@ export default function PomodoroPage() {
             <Trophy className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-lg font-black text-white">
-              {pomodoroStats?.totalSessions || 0}
-            </div>
+            <div className="text-lg font-black text-white">{pomodoroStats?.totalSessions || 0}</div>
             <div className="text-[10px] text-gray-400 font-medium">รอบสำเร็จทั้งหมด</div>
           </div>
         </div>

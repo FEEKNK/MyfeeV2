@@ -26,3 +26,8 @@ dist-ssr
 *.sln
 *.sw?
 .obsidian/
+
+# Local audit docs, backups & deployment metadata
+QA-code.md
+myfee_v1_backup.json
+.vercel

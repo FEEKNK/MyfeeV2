@@ -14,6 +14,7 @@ import {
   Settings,
   ChevronRight,
   MessageSquareQuote,
+  Trophy,
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -34,6 +35,7 @@ const CATEGORIES = [
       { title: 'Pomodoro Timer', desc: 'จับเวลาโฟกัสและพักสมอง', icon: Clock, color: 'from-red-500 to-rose-600', to: '/pomodoro' },
       { title: 'โน้ต & ไดอารี่ (Notes)', desc: 'บันทึกเรื่องราวและความรู้สึก', icon: FileText, color: 'from-amber-500 to-orange-600', to: '/notes' },
       { title: 'นับถอยหลัง (Countdown)', desc: 'นับถอยหลังวันสำคัญ', icon: Calendar, color: 'from-purple-500 to-indigo-600', to: '/countdown' },
+      { title: 'ทีมชาติไทย (Football)', desc: 'ตารางแข่งขันและอัปเดตด้วย AI', icon: Trophy, color: 'from-blue-600 to-red-500', to: '/football' },
     ],
   },
   {
@@ -50,7 +52,6 @@ export default function MorePage() {
 
   return (
     <div className="flex flex-col gap-5 pb-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass border-white/10 mb-2">
@@ -62,19 +63,19 @@ export default function MorePage() {
         </div>
       </div>
 
-      {/* Category List */}
       <div className="space-y-6">
-        {CATEGORIES.map((cat, idx) => (
-          <div key={idx} className="space-y-2.5">
+        {CATEGORIES.map((cat) => (
+          <div key={cat.title} className="space-y-2.5">
             <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider px-1">
               {cat.title}
             </h2>
             <div className="space-y-2">
-              {cat.items.map((item, itemIdx) => {
+              {cat.items.map((item) => {
                 const Icon = item.icon;
                 return (
                   <motion.button
-                    key={itemIdx}
+                    key={item.to}
+                    type="button"
                     whileTap={{ scale: 0.98 }}
                     onClick={() => navigate(item.to)}
                     className="w-full glass-dark rounded-2xl p-3.5 border border-white/10 text-left flex items-center justify-between group hover:border-white/20 transition-colors"

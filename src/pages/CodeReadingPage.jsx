@@ -10,11 +10,15 @@ export default function CodeReadingPage() {
   const { codeReadingProgress, saveCodeReadingProgress } = useStore();
   const [isFlipped, setIsFlipped] = useState(false);
 
-  const { mode, levelIndex, questionIndex } = codeReadingProgress;
+  const { mode = 'code', levelIndex = 0, questionIndex = 0 } = codeReadingProgress || {};
   const data = mode === 'code' ? codeReadingLevels : sqlReadingLevels;
-  
-  const currentLevel = data[levelIndex] || data[0];
-  const currentQuestion = currentLevel.questions[questionIndex] || currentLevel.questions[0];
+
+  const safeLevelIndex = Math.max(0, Math.min(levelIndex, data.length - 1));
+  const currentLevel = data[safeLevelIndex] || { title: '', questions: [] };
+  const safeQuestionIndex = Math.max(0, Math.min(questionIndex, Math.max(0, currentLevel.questions.length - 1)));
+  const currentQuestion = currentLevel.questions[safeQuestionIndex];
+
+  if (!currentQuestion) return null;
 
   const handleModeChange = (newMode) => {
     saveCodeReadingProgress({ mode: newMode, levelIndex: 0, questionIndex: 0 });
@@ -27,30 +31,37 @@ export default function CodeReadingPage() {
   };
 
   const nextQuestion = () => {
-    if (questionIndex < currentLevel.questions.length - 1) {
-      saveCodeReadingProgress({ questionIndex: questionIndex + 1 });
-    } else if (levelIndex < data.length - 1) {
-      saveCodeReadingProgress({ levelIndex: levelIndex + 1, questionIndex: 0 });
+    if (safeQuestionIndex < currentLevel.questions.length - 1) {
+      saveCodeReadingProgress({ levelIndex: safeLevelIndex, questionIndex: safeQuestionIndex + 1 });
+    } else if (safeLevelIndex < data.length - 1) {
+      saveCodeReadingProgress({ levelIndex: safeLevelIndex + 1, questionIndex: 0 });
     }
     setIsFlipped(false);
   };
 
   const prevQuestion = () => {
-    if (questionIndex > 0) {
-      saveCodeReadingProgress({ questionIndex: questionIndex - 1 });
-    } else if (levelIndex > 0) {
-      const prevLvl = data[levelIndex - 1];
-      saveCodeReadingProgress({ levelIndex: levelIndex - 1, questionIndex: prevLvl.questions.length - 1 });
+    if (safeQuestionIndex > 0) {
+      saveCodeReadingProgress({ levelIndex: safeLevelIndex, questionIndex: safeQuestionIndex - 1 });
+    } else if (safeLevelIndex > 0) {
+      const prevLvl = data[safeLevelIndex - 1];
+      saveCodeReadingProgress({ levelIndex: safeLevelIndex - 1, questionIndex: Math.max(0, prevLvl.questions.length - 1) });
     }
     setIsFlipped(false);
   };
+
+  const langLabel = (currentQuestion.codeLanguage || currentQuestion.language || 'Code').toUpperCase();
 
   return (
     <div className="flex flex-col h-full gap-4 pb-20 relative">
       {/* Header */}
       <div className="flex items-center justify-between z-10">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate('/')}
-          className="p-2.5 glass rounded-xl border border-white/10 text-white">
+        <motion.button
+          type="button"
+          aria-label="กลับหน้าหลัก"
+          whileTap={{ scale: 0.9 }}
+          onClick={() => navigate('/')}
+          className="p-2.5 glass rounded-xl border border-white/10 text-white"
+        >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <h1 className="font-black text-white text-lg">Code Reading</h1>
@@ -59,7 +70,8 @@ export default function CodeReadingPage() {
 
       {/* Mode Selector */}
       <div className="flex gap-2 p-1 glass rounded-2xl border border-white/10 z-10">
-        <button 
+        <button
+          type="button"
           onClick={() => handleModeChange('code')}
           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
             mode === 'code' ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' : 'text-gray-400 hover:text-white'
@@ -67,7 +79,8 @@ export default function CodeReadingPage() {
         >
           Frontend (HTML/JS)
         </button>
-        <button 
+        <button
+          type="button"
           onClick={() => handleModeChange('sql')}
           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
             mode === 'sql' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-white'
@@ -81,11 +94,12 @@ export default function CodeReadingPage() {
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none z-10 -mx-2 px-2">
         {data.map((lvl, idx) => (
           <button
-            key={lvl.id}
+            key={`${mode}-${lvl.title}-${idx}`}
+            type="button"
             onClick={() => handleLevelChange(idx)}
             className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap border transition-all ${
-              levelIndex === idx 
-                ? 'border-blue-500 bg-blue-500/20 text-blue-400' 
+              safeLevelIndex === idx
+                ? 'border-blue-500 bg-blue-500/20 text-blue-400'
                 : 'border-white/10 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
             }`}
           >
@@ -100,22 +114,19 @@ export default function CodeReadingPage() {
           className="w-full h-full relative"
           style={{ transformStyle: 'preserve-3d' }}
           animate={{ rotateY: isFlipped ? 180 : 0 }}
-          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         >
           {/* Front Side: Code & Question */}
-          <div 
+          <div
             className="absolute inset-0 w-full h-full glass-dark rounded-3xl border border-white/10 flex flex-col overflow-hidden shadow-2xl"
             style={{ backfaceVisibility: 'hidden' }}
           >
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              
-              {/* Header Info */}
               <div className="flex items-center justify-between text-[10px] uppercase tracking-widest font-bold text-gray-500 pb-2 border-b border-white/10">
-                <span className="text-blue-400">{currentQuestion.language || 'Code'}</span>
-                <span>ข้อ {questionIndex + 1}/{currentLevel.questions.length}</span>
+                <span className="text-blue-400">{langLabel}</span>
+                <span>ข้อ {safeQuestionIndex + 1}/{currentLevel.questions.length}</span>
               </div>
-              
-              {/* Code Snippet */}
+
               <div className="bg-[#0f111a] border border-white/5 rounded-2xl p-4 overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-2 opacity-30 text-[10px] font-mono text-gray-500">
                   {currentQuestion.id}
@@ -125,13 +136,12 @@ export default function CodeReadingPage() {
                 </pre>
               </div>
 
-              {/* Question & Hint */}
               <div className="space-y-3 mt-4">
                 <p className="font-bold text-white text-sm flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-400" /> คำถาม:
                 </p>
                 <p className="text-gray-300 text-sm leading-relaxed">{currentQuestion.question}</p>
-                
+
                 {currentQuestion.hint && (
                   <div className="mt-4 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 flex items-start gap-2">
                     <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
@@ -139,13 +149,12 @@ export default function CodeReadingPage() {
                   </div>
                 )}
               </div>
-
             </div>
 
-            {/* Flip Button (Front to Back) */}
             <div className="p-4 border-t border-white/10 bg-black/20 shrink-0">
-              <motion.button 
-                whileTap={{ scale: 0.98 }} 
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setIsFlipped(true)}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white font-bold shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2"
               >
@@ -155,15 +164,14 @@ export default function CodeReadingPage() {
           </div>
 
           {/* Back Side: Answer */}
-          <div 
+          <div
             className="absolute inset-0 w-full h-full glass-dark rounded-3xl border border-emerald-500/30 flex flex-col overflow-hidden shadow-2xl"
             style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
           >
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              
               <div className="flex items-center justify-between text-[10px] uppercase tracking-widest font-bold text-emerald-500 pb-2 border-b border-emerald-500/20">
                 <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> เฉลย</span>
-                <span>ข้อ {questionIndex + 1}/{currentLevel.questions.length}</span>
+                <span>ข้อ {safeQuestionIndex + 1}/{currentLevel.questions.length}</span>
               </div>
 
               <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
@@ -182,10 +190,10 @@ export default function CodeReadingPage() {
               )}
             </div>
 
-            {/* Flip Button (Back to Front) */}
             <div className="p-4 border-t border-emerald-500/20 bg-emerald-900/10 shrink-0">
-              <motion.button 
-                whileTap={{ scale: 0.98 }} 
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setIsFlipped(false)}
                 className="w-full py-3.5 glass border-emerald-500/30 rounded-xl text-emerald-400 font-bold flex items-center justify-center gap-2 hover:bg-emerald-500/10 transition-colors"
               >
@@ -193,22 +201,24 @@ export default function CodeReadingPage() {
               </motion.button>
             </div>
           </div>
-
         </motion.div>
       </div>
 
       {/* Nav Controls */}
       <div className="absolute bottom-4 left-5 right-5 flex gap-3 z-10">
-        <button 
+        <button
+          type="button"
           onClick={prevQuestion}
-          disabled={levelIndex === 0 && questionIndex === 0}
+          disabled={safeLevelIndex === 0 && safeQuestionIndex === 0}
           className="flex-1 py-3.5 glass rounded-2xl text-white font-bold disabled:opacity-30 transition-opacity text-sm border-white/10"
         >
           ก่อนหน้า
         </button>
-        <button 
+        <button
+          type="button"
           onClick={nextQuestion}
-          className="flex-1 py-3.5 bg-blue-600 rounded-2xl text-white font-bold shadow-lg shadow-blue-500/20 text-sm"
+          disabled={safeLevelIndex === data.length - 1 && safeQuestionIndex === currentLevel.questions.length - 1}
+          className="flex-1 py-3.5 bg-blue-600 rounded-2xl text-white font-bold shadow-lg shadow-blue-500/20 disabled:opacity-40 text-sm"
         >
           ถัดไป
         </button>
