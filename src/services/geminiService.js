@@ -31,6 +31,7 @@ const callGeminiProxy = async (action, input = {}) => {
     if (!response.ok) {
       const err = new Error(data.error || 'เกิดข้อผิดพลาดในการเชื่อมต่อบริการ AI');
       if (response.status === 401) err.code = 'AUTH_REQUIRED';
+      if (response.status === 403) err.code = 'NOT_ALLOWED';
       throw err;
     }
     return data;

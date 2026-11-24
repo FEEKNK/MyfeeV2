@@ -136,7 +136,7 @@ export default function AuthModal({ isOpen, onClose }) {
         aria-modal="true"
         aria-labelledby="auth-modal-title"
         onClick={onClose}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+        className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
       >
         <motion.div
           onClick={(e) => e.stopPropagation()}

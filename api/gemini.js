@@ -58,6 +58,16 @@ function readJsonBody(req) {
   });
 }
 
+function parseAllowedEmails(raw) {
+  if (typeof raw !== 'string') return new Set();
+  return new Set(
+    raw
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 async function verifySupabaseToken(authHeader, env) {
   const supabaseUrl = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').trim();
   const supabaseKey = (env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
@@ -86,6 +96,17 @@ async function verifySupabaseToken(authHeader, env) {
     });
     if (!resp.ok) {
       return { ok: false, status: 401, error: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' };
+    }
+
+    // Owner allowlist: only listed emails may spend the Gemini quota,
+    // even if someone else manages to create a Supabase account.
+    const allowedEmails = parseAllowedEmails(env.ALLOWED_EMAILS);
+    if (allowedEmails.size > 0) {
+      const user = await resp.json().catch(() => null);
+      const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+      if (!email || !allowedEmails.has(email)) {
+        return { ok: false, status: 403, error: 'บัญชีนี้ไม่ได้รับสิทธิ์ใช้งาน AI' };
+      }
     }
     return { ok: true };
   } catch {

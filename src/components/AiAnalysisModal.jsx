@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sparkles, AlertCircle, RefreshCw, CalendarDays, History, CalendarRange } from 'lucide-react';
+import { X, Sparkles, AlertCircle, RefreshCw, CalendarDays, History, CalendarRange, LogIn } from 'lucide-react';
 import { analyzeSpending } from '../services/geminiService';
 import { FULL_THAI_MONTHS } from '../constants/appConstants';
+import AuthModal from './AuthModal';
 
 const renderInlineBold = (lineText) => {
   const parts = lineText.split(/(\*\*.*?\*\*)/g);
@@ -49,10 +50,13 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
   const [error, setError] = useState(null);
   const [range, setRange] = useState('month'); // 'month' | 'past3months' | 'year'
   const [refreshKey, setRefreshKey] = useState(0);
+  const [errorCode, setErrorCode] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
 
   const handleClose = useCallback(() => {
     setResult(null);
     setError(null);
+    setErrorCode(null);
     onClose();
   }, [onClose]);
 
@@ -60,14 +64,20 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
     setRefreshKey((k) => k + 1);
   };
 
+  const handleAuthClose = () => {
+    setShowAuth(false);
+    // Retry automatically after the user returns from the login dialog
+    setRefreshKey((k) => k + 1);
+  };
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || showAuth) return;
     const onKeyDown = (e) => {
       if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, handleClose]);
+  }, [isOpen, showAuth, handleClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -77,6 +87,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
       if (!isCancelled) {
         setLoading(true);
         setError(null);
+        setErrorCode(null);
         setResult(null);
       }
     });
@@ -90,6 +101,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
       .catch((err) => {
         if (!isCancelled) {
           setError(err.message);
+          setErrorCode(err.code || null);
         }
       })
       .finally(() => {
@@ -202,13 +214,28 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
                       <p className="font-bold text-red-400 mb-2">ไม่สามารถวิเคราะห์ได้</p>
                       <p className="text-sm text-gray-400">{error}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleRefresh}
-                      className="mt-4 px-6 py-2.5 glass-dark border border-white/10 rounded-xl text-white font-bold flex items-center gap-2 hover:bg-white/5 transition-colors"
-                    >
-                      <RefreshCw className="w-4 h-4" /> ลองใหม่
-                    </button>
+                    {errorCode === 'AUTH_REQUIRED' ? (
+                      <>
+                        <p className="text-xs text-gray-500">
+                          เพื่อป้องกันคนอื่นแอบใช้โควต้า AI ของคุณ ต้องเข้าสู่ระบบครั้งเดียวต่ออุปกรณ์ (ระบบจะจำไว้)
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowAuth(true)}
+                          className="mt-2 px-6 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white font-bold flex items-center gap-2 transition-colors"
+                        >
+                          <LogIn className="w-4 h-4" /> เข้าสู่ระบบ
+                        </button>
+                      </>
+                    ) : errorCode === 'NOT_ALLOWED' ? null : (
+                      <button
+                        type="button"
+                        onClick={handleRefresh}
+                        className="mt-4 px-6 py-2.5 glass-dark border border-white/10 rounded-xl text-white font-bold flex items-center gap-2 hover:bg-white/5 transition-colors"
+                      >
+                        <RefreshCw className="w-4 h-4" /> ลองใหม่
+                      </button>
+                    )}
                   </div>
                 ) : result ? (
                   <motion.div
@@ -239,6 +266,7 @@ export default function AiAnalysisModal({ isOpen, onClose, financeData, selected
               )}
             </div>
           </motion.div>
+          <AuthModal isOpen={showAuth} onClose={handleAuthClose} />
         </>
       )}
     </AnimatePresence>
